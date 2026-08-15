@@ -19,7 +19,7 @@ Production-grade backend architecture for detecting malicious web scraping, reco
 
 </div>
 
-# 📖 Table of Contents
+#  Table of Contents
 
 - [Overview](#-overview)
 - [Problem Statement](#-problem-statement)
@@ -43,7 +43,7 @@ Production-grade backend architecture for detecting malicious web scraping, reco
 
 ---
 
-# 📌 Overview
+#  Overview
 
 HoneyShield is a **production-grade backend platform** built to detect malicious interactions using **Honey Tokens**.
 
@@ -67,7 +67,7 @@ The project is intentionally backend-first, with AI capabilities planned for fut
 
 ---
 
-# ❓ Problem Statement
+#  Problem Statement
 
 Modern web applications are increasingly targeted by:
 
@@ -86,7 +86,7 @@ Any interaction with these tokens is treated as a high-confidence indicator of s
 
 ---
 
-# 🎯 Vision
+#  Vision
 
 HoneyShield aims to become a comprehensive deception security platform capable of:
 
@@ -104,7 +104,7 @@ The current implementation focuses on establishing a scalable and maintainable b
 
 ---
 
-# 🎯 Objectives
+#  Objectives
 
 The primary objectives of HoneyShield are:
 
@@ -118,9 +118,9 @@ The primary objectives of HoneyShield are:
 
 ---
 
-# 🚀 Key Features
+#  Key Features
 
-## ✅ Current Features
+##  Current Features
 
 ### Backend Foundation
 
@@ -206,7 +206,7 @@ Responsibilities include:
 
 ---
 
-# 🔮 Planned Features
+#  Planned Features
 
 Future milestones will introduce:
 
@@ -265,7 +265,7 @@ Future milestones will introduce:
 
 ---
 
-# ⚙️ Technology Stack
+#  Technology Stack
 
 | Category | Technology |
 |----------|------------|
@@ -284,7 +284,7 @@ Future milestones will introduce:
 
 
 
-# 📂 Project Structure
+#  Project Structure
 
 The project follows a **layered, modular architecture** that separates responsibilities into independent components. Each module has a single responsibility, making the codebase scalable, maintainable, and easy to test.
 
@@ -359,7 +359,7 @@ HoneyShield/
 
 ---
 
-# 🏛️ Architectural Philosophy
+#  Architectural Philosophy
 
 HoneyShield is designed around the principle of **Separation of Concerns**.
 
@@ -377,7 +377,7 @@ This makes the system:
 
 ---
 
-# 🧩 Layered Architecture
+# Layered Architecture
 
 ```
                 Client
@@ -408,7 +408,7 @@ Repositories never know about HTTP.
 
 ---
 
-# 🌐 API Layer
+#  API Layer
 
 The API Layer is the public interface of HoneyShield.
 
@@ -434,7 +434,7 @@ It receives incoming HTTP requests and delegates all work to the Service Layer.
 
 ---
 
-# ⚙️ Service Layer
+#  Service Layer
 
 The Service Layer is the heart of HoneyShield.
 
@@ -494,7 +494,7 @@ Return created object
 
 ---
 
-# 🗄️ Repository Layer
+#  Repository Layer
 
 Repositories encapsulate persistence logic.
 
@@ -551,7 +551,7 @@ exists()
 
 ---
 
-# 💾 Database Layer
+#  Database Layer
 
 HoneyShield uses PostgreSQL with SQLAlchemy 2.x.
 
@@ -570,7 +570,7 @@ Alembic manages every schema change through version-controlled migrations.
 
 ---
 
-# 🔄 Request Lifecycle
+#  Request Lifecycle
 
 Every request travels through a predictable pipeline.
 
@@ -609,7 +609,7 @@ This predictable flow keeps the architecture clean and easy to reason about.
 
 ---
 
-# 🔁 Transaction Flow
+#  Transaction Flow
 
 HoneyShield follows strict transaction ownership.
 
@@ -679,7 +679,7 @@ Only the **Service Layer** owns transactions.
 
 ---
 
-# 📊 Dependency Injection
+#  Dependency Injection
 
 Dependency Injection keeps components loosely coupled.
 
@@ -713,7 +713,7 @@ Benefits:
 
 ---
 
-# 📦 Why Repository Pattern?
+#  Why Repository Pattern?
 
 Without repositories:
 
@@ -759,7 +759,7 @@ Benefits:
 
 ---
 
-# 🧠 Why Service Layer?
+#  Why Service Layer?
 
 The Service Layer centralizes business logic.
 
@@ -778,7 +778,7 @@ With services, the logic exists **once** and is reused everywhere.
 
 ---
 
-# 🛡️ Error Handling Strategy
+#  Error Handling Strategy
 
 HoneyShield uses custom domain exceptions.
 
@@ -802,7 +802,7 @@ Benefits:
 
 ---
 
-# 🧪 Validation Strategy
+#  Validation Strategy
 
 Validation occurs at multiple layers.
 
@@ -818,7 +818,7 @@ This layered validation prevents invalid data from reaching persistence while ke
 ---
 
 
-# 🗄️ Database Design
+#  Database Design
 
 HoneyShield uses **PostgreSQL** as its primary relational database.
 
@@ -892,7 +892,7 @@ The schema is normalized to reduce redundancy and improve consistency.
 
 ---
 
-# 🏢 Tenant
+# Tenant
 
 A **Tenant** represents an organization using HoneyShield.
 
@@ -938,7 +938,7 @@ Deleting a tenant cascades to its projects.
 
 ---
 
-# 🌍 Project
+#  Project
 
 A project represents one monitored application or domain.
 
@@ -989,7 +989,7 @@ Projects isolate groups of Honey Tokens.
 
 ---
 
-# 🍯 HoneyToken
+#  HoneyToken
 
 Honey Tokens are the core deception mechanism.
 
@@ -1069,7 +1069,7 @@ The enum-based design makes future expansion straightforward.
 
 ---
 
-# 🚨 Detection Event
+#  Detection Event
 
 Every Honey Token access generates a Detection Event.
 
@@ -1109,7 +1109,7 @@ Immutable events ensure:
 
 ---
 
-# ⚡ Enumerations
+# Enumerations
 
 HoneyShield uses strongly typed enums instead of strings.
 
@@ -1135,7 +1135,7 @@ TokenStatus
 
 ---
 
-# 🔑 Primary Keys
+#  Primary Keys
 
 Every table uses a surrogate primary key.
 
@@ -1148,7 +1148,7 @@ Benefits:
 
 ---
 
-# 🔗 Foreign Keys
+#  Foreign Keys
 
 Relationships are enforced by PostgreSQL.
 
@@ -1172,7 +1172,7 @@ This guarantees referential integrity.
 
 ---
 
-# 📈 Database Indexes
+#  Database Indexes
 
 Indexes are added to frequently queried columns.
 
@@ -1194,7 +1194,7 @@ Benefits:
 
 ---
 
-# 🔄 Cascade Strategy
+# Cascade Strategy
 
 HoneyShield uses controlled cascade deletion.
 
@@ -1218,7 +1218,7 @@ This prevents orphaned records while preserving consistency.
 
 ---
 
-# 🧱 Repository Layer
+#  Repository Layer
 
 Repositories encapsulate persistence logic.
 
@@ -1319,7 +1319,7 @@ Examples:
 
 ---
 
-# ⚙️ Service Layer
+#  Service Layer
 
 Services coordinate business workflows.
 
@@ -1355,7 +1355,7 @@ Repositories alone cannot perform this workflow because it spans multiple busine
 
 ---
 
-# 🔄 Transaction Management
+#  Transaction Management
 
 Transactions belong exclusively to the Service Layer.
 
@@ -1393,7 +1393,7 @@ This guarantees atomic operations.
 
 ---
 
-# 📐 SOLID Principles
+#  SOLID Principles
 
 HoneyShield follows the SOLID design principles.
 
@@ -1441,7 +1441,7 @@ Services receive repositories and database sessions through constructor injectio
 
 ---
 
-# 🎯 Design Patterns Used
+#  Design Patterns Used
 
 ## Repository Pattern
 
@@ -1496,29 +1496,29 @@ This ensures consistency across multiple repository calls.
 
 ---
 
-# 🚀 Extensibility
+#  Extensibility
 
 HoneyShield has been designed for future expansion.
 
 Planned capabilities include:
 
-- 🤖 AI-powered attacker behavior analysis
-- 📈 Threat intelligence dashboards
-- 🌍 GeoIP enrichment
-- 📧 Email and Slack notifications
-- 📊 Analytics and reporting
-- 🔐 Authentication and RBAC
-- ⚡ Redis caching
-- 📡 Real-time event streaming
-- ☁️ Multi-cloud deployment
-- 📱 Administrative web dashboard
+-  AI-powered attacker behavior analysis
+-  Threat intelligence dashboards
+-  GeoIP enrichment
+-  Email and Slack notifications
+-  Analytics and reporting
+-  Authentication and RBAC
+-  Redis caching
+-  Real-time event streaming
+-  Multi-cloud deployment
+-  Administrative web dashboard
 
 These features can be introduced without changing the existing layered architecture because responsibilities are already well separated.
 
 ---
 
 
-# 🚀 Getting Started
+#  Getting Started
 
 ## Prerequisites
 
@@ -1539,7 +1539,7 @@ Recommended IDE:
 
 ---
 
-# 📥 Clone the Repository
+#  Clone the Repository
 
 ```bash
 git clone https://github.com/<your-username>/HoneyShield.git
@@ -1549,7 +1549,7 @@ cd HoneyShield
 
 ---
 
-# 📦 Create Virtual Environment
+#  Create Virtual Environment
 
 Linux / macOS
 
@@ -1569,7 +1569,7 @@ python -m venv .venv
 
 ---
 
-# 📚 Install Dependencies
+#  Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -1577,7 +1577,7 @@ pip install -r requirements.txt
 
 ---
 
-# ⚙️ Configure Environment Variables
+#  Configure Environment Variables
 
 Create a `.env` file.
 
@@ -1597,7 +1597,7 @@ LOG_LEVEL=INFO
 
 ---
 
-# 🐳 Run with Docker
+#  Run with Docker
 
 Build containers
 
@@ -1625,7 +1625,7 @@ docker compose down
 
 ---
 
-# 🗄️ Database Migrations
+#  Database Migrations
 
 Generate migration
 
@@ -1659,7 +1659,7 @@ alembic history
 
 ---
 
-# ▶️ Running the Backend
+#  Running the Backend
 
 Development mode
 
@@ -1675,7 +1675,7 @@ uvicorn app.main:app
 
 ---
 
-# ❤️ Health Endpoints
+#  Health Endpoints
 
 Docker health check
 
@@ -1699,7 +1699,7 @@ Example response
 
 ---
 
-# 📖 API Documentation
+#  API Documentation
 
 FastAPI automatically generates interactive API documentation.
 
@@ -1723,7 +1723,7 @@ OpenAPI JSON
 
 ---
 
-# 🧪 Testing
+#  Testing
 
 Run all tests
 
@@ -1745,7 +1745,7 @@ pytest --cov=app
 
 ---
 
-# 🔍 Code Quality
+#  Code Quality
 
 Format code
 
@@ -1773,7 +1773,7 @@ mypy app
 
 ---
 
-# 🌿 Git Workflow
+#  Git Workflow
 
 Create a feature branch
 
@@ -1801,7 +1801,7 @@ git push origin feature/new-feature
 
 ---
 
-# 📌 Versioning
+#  Versioning
 
 HoneyShield follows Semantic Versioning.
 
@@ -1833,9 +1833,9 @@ Major.Minor.Patch
 
 ---
 
-# 🏗️ Development Roadmap
+#  Development Roadmap
 
-## ✅ Milestone 1
+##  Milestone 1
 
 Project Planning
 
@@ -1846,7 +1846,7 @@ Project Planning
 
 ---
 
-## ✅ Milestone 2
+##  Milestone 2
 
 Backend Foundation
 
@@ -1859,7 +1859,7 @@ Backend Foundation
 
 ---
 
-## ✅ Milestone 3
+##  Milestone 3
 
 Database Infrastructure
 
@@ -1870,7 +1870,7 @@ Database Infrastructure
 
 ---
 
-## ✅ Milestone 4
+##  Milestone 4
 
 Domain Models
 
@@ -1883,7 +1883,7 @@ Domain Models
 
 ---
 
-## ✅ Milestone 5
+##  Milestone 5
 
 Repository Layer
 
@@ -1894,7 +1894,7 @@ Repository Layer
 
 ---
 
-## ✅ Milestone 6
+## Milestone 6
 
 Service Layer
 
@@ -1906,7 +1906,7 @@ Service Layer
 
 ---
 
-## 🚧 Milestone 7
+##  Milestone 7
 
 REST API Layer
 
@@ -1921,7 +1921,7 @@ Planned:
 
 ---
 
-## 🔮 Future Milestones
+##  Future Milestones
 
 Authentication
 
@@ -1989,48 +1989,11 @@ Deployment
 - Azure
 - GCP
 
----
-
-# 📊 Current Progress
-
-| Milestone | Status |
-|-----------|--------|
-| Planning | ✅ |
-| Backend Foundation | ✅ |
-| Database Infrastructure | ✅ |
-| Domain Models | ✅ |
-| Repository Layer | ✅ |
-| Service Layer | ✅ |
-| API Layer | 🚧 |
-| Authentication | ⏳ |
-| AI Engine | ⏳ |
-| Dashboard | ⏳ |
 
 ---
 
-# 🤝 Contributing
 
-Contributions are welcome.
-
-Recommended workflow:
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Follow existing coding standards.
-4. Ensure tests pass.
-5. Submit a Pull Request.
-
----
-
-# 📜 License
-
-This project is released under the MIT License.
-
-See the `LICENSE` file for details.
-
----
-
-# 👨‍💻 Author
+#  Author
 
 **Karthik Balaji**
 
@@ -2051,44 +2014,10 @@ GitHub
 https://github.com/karthikbalaji1111-wq
 ```
 
----
-
-# 🙏 Acknowledgements
-
-Special thanks to the open-source community and the maintainers of:
-
-- FastAPI
-- SQLAlchemy
-- PostgreSQL
-- Alembic
-- Pydantic
-- Uvicorn
-- Docker
-- Python
-
-Their contributions make modern backend engineering possible.
 
 ---
 
-# ⭐ Support the Project
-
-If you found HoneyShield useful:
-
-⭐ Star the repository
-
-🍴 Fork the project
-
-🛠️ Contribute improvements
-
-🐛 Report issues
-
-💡 Suggest new features
-
-Every contribution helps make HoneyShield a more powerful deception security platform.
-
----
-
-# 🎯 Vision
+#  Vision
 
 HoneyShield aims to evolve into a comprehensive, AI-driven deception security platform capable of detecting, analyzing, and responding to modern reconnaissance and automated attack techniques in real time.
 
