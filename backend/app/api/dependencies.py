@@ -14,6 +14,7 @@ from app.services.detection_event import DetectionEventService
 from app.services.honey_token import HoneyTokenService
 from app.services.project import ProjectService
 from app.services.tenant import TenantService
+from app.services.threat_intelligence import ThreatIntelligenceService
 
 SessionDependency = Annotated[Session, Depends(get_db)]
 
@@ -47,4 +48,14 @@ def get_detection_event_service(session: SessionDependency) -> DetectionEventSer
         session=session,
         event_repo=DetectionEventRepository(session),
         token_repo=HoneyTokenRepository(session),
+    )
+
+
+def get_threat_intelligence_service(
+    session: SessionDependency,
+) -> ThreatIntelligenceService:
+    """Provide a threat-intelligence service using the request-scoped session."""
+    return ThreatIntelligenceService(
+        session=session,
+        event_repo=DetectionEventRepository(session),
     )

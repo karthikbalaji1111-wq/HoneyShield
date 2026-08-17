@@ -16,6 +16,11 @@ from app.schemas.honey_token import (
 )
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.tenant import TenantCreate, TenantResponse
+from app.schemas.threat_intelligence import (
+    IPProfileResponse,
+    ThreatSummaryResponse,
+    TimelineResponse,
+)
 
 __all__ = [
     "DetectionEventCreate",
@@ -32,4 +37,7 @@ __all__ = [
     "SchemaBase",
     "TenantCreate",
     "TenantResponse",
+    "IPProfileResponse",
+    "ThreatSummaryResponse",
+    "TimelineResponse",
 ]

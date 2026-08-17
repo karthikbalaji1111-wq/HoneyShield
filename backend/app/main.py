@@ -26,6 +26,10 @@ app = FastAPI(
             "name": "detection-events",
             "description": "Detection-event recording and retrieval endpoints.",
         },
+        {
+            "name": "threat-intelligence",
+            "description": "Threat intelligence derived from detection-event activity.",
+        },
     ],
 )
 register_middlewares(app)
