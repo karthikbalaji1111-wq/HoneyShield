@@ -16,6 +16,7 @@ from app.models.enums import HoneyTokenType
 from app.models.honey_token import HoneyToken
 from app.repositories.honey_token import HoneyTokenRepository
 from app.repositories.project import ProjectRepository
+from app.services.audit_log import AuditLogService
 from app.services.base import BaseService
 from app.services.generation.registry import GENERATOR_REGISTRY
 
@@ -30,6 +31,7 @@ class HoneyTokenService(BaseService):
         session: Session,
         token_repo: HoneyTokenRepository,
         project_repo: ProjectRepository,
+        audit_service: AuditLogService | None = None,
     ) -> None:
         """Initialize the service with token and project repositories.
 
@@ -37,13 +39,12 @@ class HoneyTokenService(BaseService):
             session: The transaction session for token operations.
             token_repo: Repository used to persist and retrieve honey tokens.
             project_repo: Repository used to resolve owning projects.
-
-        Returns:
-            None.
+            audit_service: Service used to record audit events.
         """
         super().__init__(session)
         self.token_repo = token_repo
         self.project_repo = project_repo
+        self.audit_service = audit_service
 
     def create_token(
         self,
@@ -93,6 +94,20 @@ class HoneyTokenService(BaseService):
                 label=label,
                 token_metadata=metadata,
             )
+            self.session.flush()
+
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="HONEY_TOKEN_CREATED",
+                    severity="INFO",
+                    message=f"Created honey token '{token_type.value}' in project '{project_domain}'",
+                    actor_source="api",
+                    target_entity="honey_token",
+                    target_id=token.id,
+                    tenant_id=project.tenant_id,
+                    project_id=project.id,
+                )
+
             self.session.commit()
             return token
         except Exception:
@@ -152,6 +167,20 @@ class HoneyTokenService(BaseService):
                         label=generated.label,
                         token_metadata=generated.metadata,
                     )
+                    self.session.flush()
+
+                    if self.audit_service:
+                        self.audit_service.record_action(
+                            event_type="HONEY_TOKEN_GENERATED",
+                            severity="INFO",
+                            message=f"Generated honey token '{token_type.value}' for project '{project_domain}'",
+                            actor_source="api",
+                            target_entity="honey_token",
+                            target_id=token.id,
+                            tenant_id=project.tenant_id,
+                            project_id=project.id,
+                        )
+
                     self.session.commit()
                     return token
                 except IntegrityError:
@@ -201,6 +230,20 @@ class HoneyTokenService(BaseService):
                 raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
 
             token.is_active = False
+            self.session.flush()
+
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="HONEY_TOKEN_REVOKED",
+                    severity="WARNING",
+                    message=f"Revoked honey token ID {token.id}",
+                    actor_source="api",
+                    target_entity="honey_token",
+                    target_id=token.id,
+                    tenant_id=token.project.tenant_id,
+                    project_id=token.project_id,
+                )
+
             self.session.commit()
         except Exception:
             try:
@@ -250,6 +293,20 @@ class HoneyTokenService(BaseService):
                 label=old_token.label,
                 token_metadata=old_token.token_metadata,
             )
+            self.session.flush()
+
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="HONEY_TOKEN_ROTATED",
+                    severity="INFO",
+                    message=f"Rotated honey token ID {old_token.id} to new token ID {new_token.id}",
+                    actor_source="api",
+                    target_entity="honey_token",
+                    target_id=new_token.id,
+                    tenant_id=old_token.project.tenant_id,
+                    project_id=old_token.project_id,
+                )
+
             self.session.commit()
             return new_token
         except Exception:

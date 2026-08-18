@@ -10,24 +10,24 @@ from app.core.exceptions import (
 )
 from app.models.tenant import Tenant
 from app.repositories.tenant import TenantRepository
+from app.services.audit_log import AuditLogService
 from app.services.base import BaseService
 
 
 class TenantService(BaseService):
     """Coordinate tenant lifecycle operations."""
 
-    def __init__(self, session: Session, tenant_repo: TenantRepository) -> None:
+    def __init__(self, session: Session, tenant_repo: TenantRepository, audit_service: AuditLogService | None = None) -> None:
         """Initialize the service with tenant persistence dependencies.
 
         Args:
             session: The transaction session for tenant operations.
             tenant_repo: Repository used to persist and retrieve tenants.
-
-        Returns:
-            None.
+            audit_service: Service used to record audit events.
         """
         super().__init__(session)
         self.tenant_repo = tenant_repo
+        self.audit_service = audit_service
 
     def create_tenant(self, name: str, slug: str) -> Tenant:
         """Create a tenant with a unique slug.
@@ -52,6 +52,19 @@ class TenantService(BaseService):
                 )
 
             tenant = self.tenant_repo.create(name=name, slug=slug)
+            self.session.flush()
+            
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="TENANT_CREATED",
+                    severity="INFO",
+                    message=f"Created tenant '{name}' with slug '{slug}'",
+                    actor_source="api",
+                    target_entity="tenant",
+                    target_id=tenant.id,
+                    tenant_id=tenant.id,
+                )
+                
             self.session.commit()
             return tenant
         except Exception:
@@ -109,6 +122,18 @@ class TenantService(BaseService):
         try:
             tenant = self.get_tenant(slug)
             self.tenant_repo.delete(tenant.id)
+            
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="TENANT_DELETED",
+                    severity="WARNING",
+                    message=f"Deleted tenant '{tenant.name}' with slug '{slug}'",
+                    actor_source="api",
+                    target_entity="tenant",
+                    target_id=tenant.id,
+                    tenant_id=tenant.id,
+                )
+                
             self.session.commit()
         except Exception:
             try:

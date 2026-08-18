@@ -12,6 +12,7 @@ from app.core.exceptions import (
 from app.models.project import Project
 from app.repositories.project import ProjectRepository
 from app.repositories.tenant import TenantRepository
+from app.services.audit_log import AuditLogService
 from app.services.base import BaseService
 
 
@@ -23,6 +24,7 @@ class ProjectService(BaseService):
         session: Session,
         project_repo: ProjectRepository,
         tenant_repo: TenantRepository,
+        audit_service: AuditLogService | None = None,
     ) -> None:
         """Initialize the service with project and tenant repositories.
 
@@ -30,13 +32,12 @@ class ProjectService(BaseService):
             session: The transaction session for project operations.
             project_repo: Repository used to persist and retrieve projects.
             tenant_repo: Repository used to resolve owning tenants.
-
-        Returns:
-            None.
+            audit_service: Service used to record audit events.
         """
         super().__init__(session)
         self.project_repo = project_repo
         self.tenant_repo = tenant_repo
+        self.audit_service = audit_service
 
     def create_project(self, tenant_slug: str, name: str, domain: str) -> Project:
         """Create a project for an existing tenant.
@@ -76,6 +77,20 @@ class ProjectService(BaseService):
                 name=name,
                 domain=domain,
             )
+            self.session.flush()
+            
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="PROJECT_CREATED",
+                    severity="INFO",
+                    message=f"Created project '{name}' with domain '{domain}'",
+                    actor_source="api",
+                    target_entity="project",
+                    target_id=project.id,
+                    tenant_id=tenant.id,
+                    project_id=project.id,
+                )
+
             self.session.commit()
             return project
         except Exception:
@@ -153,6 +168,19 @@ class ProjectService(BaseService):
         try:
             project = self.get_project(domain)
             self.project_repo.delete(project.id)
+            
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="PROJECT_DELETED",
+                    severity="WARNING",
+                    message=f"Deleted project '{project.name}' with domain '{domain}'",
+                    actor_source="api",
+                    target_entity="project",
+                    target_id=project.id,
+                    tenant_id=project.tenant_id,
+                    project_id=project.id,
+                )
+                
             self.session.commit()
         except Exception:
             try:
