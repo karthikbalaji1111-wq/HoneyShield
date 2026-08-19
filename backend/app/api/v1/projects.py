@@ -4,12 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.api.dependencies import get_project_service, get_honey_token_service
+from app.api.dependencies import CurrentUser, TenantAdminRequired, get_honey_token_service, get_project_service
 from app.schemas.error import ErrorResponse
-from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.honey_token import HoneyTokenGenerate, HoneyTokenResponse
-from app.services.project import ProjectService
+from app.schemas.project import ProjectCreate, ProjectResponse
 from app.services.honey_token import HoneyTokenService
+from app.services.project import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -21,6 +21,14 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     summary="Create a project",
     description="Creates a project for an existing tenant.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Owning tenant does not exist.",
@@ -42,8 +50,9 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 def create_project(
     payload: ProjectCreate,
     service: Annotated[ProjectService, Depends(get_project_service)],
+    _: TenantAdminRequired,
 ) -> ProjectResponse:
-    """Create and serialize a project."""
+    """Create and serialize a project. Requires TENANT_ADMIN or above."""
     return service.create_project(
         tenant_slug=payload.tenant_slug,
         name=payload.name,
@@ -58,6 +67,10 @@ def create_project(
     summary="List projects",
     description="Lists projects with optional tenant and activity filters.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Supplied tenant does not exist.",
@@ -74,6 +87,7 @@ def create_project(
 )
 def list_projects(
     service: Annotated[ProjectService, Depends(get_project_service)],
+    _: CurrentUser,
     tenant_slug: Annotated[
         str | None,
         Query(
@@ -86,7 +100,7 @@ def list_projects(
         Query(description="Whether to exclude inactive projects."),
     ] = True,
 ) -> list[ProjectResponse]:
-    """List and serialize projects."""
+    """List and serialize projects. Requires authentication."""
     return service.list_projects(
         tenant_slug=tenant_slug,
         active_only=active_only,
@@ -100,6 +114,10 @@ def list_projects(
     summary="Get a project",
     description="Retrieves one project by its domain.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Project does not exist.",
@@ -124,8 +142,9 @@ def get_project(
         ),
     ],
     service: Annotated[ProjectService, Depends(get_project_service)],
+    _: CurrentUser,
 ) -> ProjectResponse:
-    """Retrieve and serialize a project."""
+    """Retrieve and serialize a project. Requires authentication."""
     return service.get_project(domain=domain)
 
 
@@ -135,6 +154,14 @@ def get_project(
     summary="Delete a project",
     description="Deletes a project through the project service.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Project does not exist.",
@@ -159,8 +186,9 @@ def delete_project(
         ),
     ],
     service: Annotated[ProjectService, Depends(get_project_service)],
+    _: TenantAdminRequired,
 ) -> None:
-    """Delete a project."""
+    """Delete a project. Requires TENANT_ADMIN or above."""
     service.delete_project(domain=domain)
 
 
@@ -171,6 +199,14 @@ def delete_project(
     summary="Generate a honey token",
     description="Algorithmically generates and persists a realistic honey token.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Owning project does not exist.",
@@ -200,8 +236,9 @@ def generate_honey_token(
     ],
     payload: HoneyTokenGenerate,
     service: Annotated[HoneyTokenService, Depends(get_honey_token_service)],
+    _: TenantAdminRequired,
 ) -> HoneyTokenResponse:
-    """Generate and serialize a honey token."""
+    """Generate and serialize a honey token. Requires TENANT_ADMIN or above."""
     return service.generate_token(
         project_domain=domain,
         token_type=payload.token_type,

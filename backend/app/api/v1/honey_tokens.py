@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_honey_token_service
+from app.api.dependencies import CurrentUser, TenantAdminRequired, get_honey_token_service
 from app.schemas.error import ErrorResponse
 from app.schemas.honey_token import (
     HoneyTokenCreate,
@@ -24,6 +24,14 @@ router = APIRouter(prefix="/honey-tokens", tags=["honey-tokens"])
     summary="Create a honey token",
     description="Creates a honey token for an existing project.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Owning project does not exist.",
@@ -45,8 +53,9 @@ router = APIRouter(prefix="/honey-tokens", tags=["honey-tokens"])
 def create_honey_token(
     payload: HoneyTokenCreate,
     service: Annotated[HoneyTokenService, Depends(get_honey_token_service)],
+    _: TenantAdminRequired,
 ) -> HoneyTokenResponse:
-    """Create and serialize a honey token."""
+    """Create and serialize a honey token. Requires TENANT_ADMIN or above."""
     return service.create_token(
         project_domain=payload.project_domain,
         token_type=payload.token_type,
@@ -63,6 +72,10 @@ def create_honey_token(
     summary="List honey tokens",
     description="Lists honey tokens with optional project and activity filters.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Supplied project does not exist.",
@@ -79,6 +92,7 @@ def create_honey_token(
 )
 def list_honey_tokens(
     service: Annotated[HoneyTokenService, Depends(get_honey_token_service)],
+    _: CurrentUser,
     project_domain: Annotated[
         str | None,
         Query(
@@ -91,7 +105,7 @@ def list_honey_tokens(
         Query(description="Whether to exclude revoked tokens."),
     ] = True,
 ) -> list[HoneyTokenResponse]:
-    """List and serialize honey tokens."""
+    """List and serialize honey tokens. Requires authentication."""
     return service.list_tokens(
         project_domain=project_domain,
         active_only=active_only,
@@ -104,6 +118,14 @@ def list_honey_tokens(
     summary="Revoke a honey token",
     description="Marks an existing honey token as inactive.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Honey token does not exist.",
@@ -121,8 +143,9 @@ def list_honey_tokens(
 def revoke_honey_token(
     payload: HoneyTokenRevoke,
     service: Annotated[HoneyTokenService, Depends(get_honey_token_service)],
+    _: TenantAdminRequired,
 ) -> None:
-    """Revoke a honey token."""
+    """Revoke a honey token. Requires TENANT_ADMIN or above."""
     service.revoke_token(token_value=payload.token_value)
 
 
@@ -133,6 +156,14 @@ def revoke_honey_token(
     summary="Rotate a honey token",
     description="Atomically revokes a token and creates its replacement.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Existing honey token does not exist.",
@@ -154,8 +185,9 @@ def revoke_honey_token(
 def rotate_honey_token(
     payload: HoneyTokenRotate,
     service: Annotated[HoneyTokenService, Depends(get_honey_token_service)],
+    _: TenantAdminRequired,
 ) -> HoneyTokenResponse:
-    """Rotate and serialize a honey token."""
+    """Rotate and serialize a honey token. Requires TENANT_ADMIN or above."""
     return service.rotate_token(
         old_token_value=payload.old_token_value,
         new_token_value=payload.new_token_value,

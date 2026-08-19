@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.api.dependencies import get_tenant_service
+from app.api.dependencies import CurrentUser, SystemAdminRequired, get_tenant_service
 from app.schemas.error import ErrorResponse
 from app.schemas.tenant import TenantCreate, TenantResponse
 from app.services.tenant import TenantService
@@ -19,6 +19,14 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
     summary="Create a tenant",
     description="Creates a tenant through the tenant service.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "SYSTEM_ADMIN role required.",
+        },
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponse,
             "description": "Tenant slug already exists.",
@@ -36,8 +44,9 @@ router = APIRouter(prefix="/tenants", tags=["tenants"])
 def create_tenant(
     payload: TenantCreate,
     service: Annotated[TenantService, Depends(get_tenant_service)],
+    _: SystemAdminRequired,
 ) -> TenantResponse:
-    """Create and serialize a tenant."""
+    """Create and serialize a tenant. Requires SYSTEM_ADMIN."""
     return service.create_tenant(name=payload.name, slug=payload.slug)
 
 
@@ -48,6 +57,10 @@ def create_tenant(
     summary="List tenants",
     description="Lists tenants, optionally limited to active records.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponse,
             "description": "Unexpected server error.",
@@ -56,12 +69,13 @@ def create_tenant(
 )
 def list_tenants(
     service: Annotated[TenantService, Depends(get_tenant_service)],
+    _: CurrentUser,
     active_only: Annotated[
         bool,
         Query(description="Whether to exclude inactive tenants."),
     ] = True,
 ) -> list[TenantResponse]:
-    """List and serialize tenants."""
+    """List and serialize tenants. Requires authentication."""
     return service.list_tenants(active_only=active_only)
 
 
@@ -72,6 +86,10 @@ def list_tenants(
     summary="Get a tenant",
     description="Retrieves one tenant by its unique slug.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Tenant does not exist.",
@@ -96,8 +114,9 @@ def get_tenant(
         ),
     ],
     service: Annotated[TenantService, Depends(get_tenant_service)],
+    _: CurrentUser,
 ) -> TenantResponse:
-    """Retrieve and serialize a tenant."""
+    """Retrieve and serialize a tenant. Requires authentication."""
     return service.get_tenant(slug=slug)
 
 
@@ -107,6 +126,14 @@ def get_tenant(
     summary="Delete a tenant",
     description="Deletes a tenant through the tenant service.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "SYSTEM_ADMIN role required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Tenant does not exist.",
@@ -131,6 +158,7 @@ def delete_tenant(
         ),
     ],
     service: Annotated[TenantService, Depends(get_tenant_service)],
+    _: SystemAdminRequired,
 ) -> None:
-    """Delete a tenant."""
+    """Delete a tenant. Requires SYSTEM_ADMIN."""
     service.delete_tenant(slug=slug)

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.dependencies import get_detection_event_service
+from app.api.dependencies import CurrentUser, TenantAdminRequired, get_detection_event_service
 from app.schemas.detection_event import (
     DetectionEventCreate,
     DetectionEventResponse,
@@ -23,6 +23,14 @@ router = APIRouter(prefix="/detection-events", tags=["detection-events"])
     summary="Record a detection event",
     description="Records an immutable event for a triggered honey token.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "model": ErrorResponse,
+            "description": "TENANT_ADMIN role or above required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Honey token does not exist.",
@@ -40,8 +48,9 @@ router = APIRouter(prefix="/detection-events", tags=["detection-events"])
 def create_detection_event(
     payload: DetectionEventCreate,
     service: Annotated[DetectionEventService, Depends(get_detection_event_service)],
+    _: TenantAdminRequired,
 ) -> DetectionEventResponse:
-    """Record and serialize a detection event."""
+    """Record and serialize a detection event. Requires TENANT_ADMIN or above."""
     return service.record_event(
         token_value=payload.token_value,
         ip_address=payload.ip_address,
@@ -60,6 +69,10 @@ def create_detection_event(
     summary="List recent detection events",
     description="Lists recent events globally or for one honey token.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_404_NOT_FOUND: {
             "model": ErrorResponse,
             "description": "Supplied honey token does not exist.",
@@ -79,6 +92,7 @@ def list_detection_events(
         DetectionEventService,
         Depends(get_detection_event_service),
     ],
+    _: CurrentUser,
     token_value: Annotated[
         str | None,
         Query(
@@ -94,7 +108,7 @@ def list_detection_events(
         ),
     ] = 100,
 ) -> list[DetectionEventResponse]:
-    """List and serialize recent detection events."""
+    """List and serialize recent detection events. Requires authentication."""
     return service.list_recent_events(token_value=token_value, limit=limit)
 
 
@@ -105,6 +119,10 @@ def list_detection_events(
     summary="Get detection-event statistics",
     description="Returns global total and current UTC-day event counts.",
     responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorResponse,
+            "description": "Authentication required.",
+        },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponse,
             "description": "Unexpected server error.",
@@ -116,6 +134,7 @@ def get_detection_event_statistics(
         DetectionEventService,
         Depends(get_detection_event_service),
     ],
+    _: CurrentUser,
 ) -> DetectionEventStatisticsResponse:
-    """Retrieve and serialize detection-event statistics."""
+    """Retrieve and serialize detection-event statistics. Requires authentication."""
     return service.get_statistics()

@@ -134,3 +134,72 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_roles(*allowed_roles: "Role") -> "Callable[[User], User]":
+    """Return a FastAPI dependency that enforces role membership.
+
+    The returned dependency resolves the current user via ``get_current_user``
+    and then asserts that the user's role is one of ``allowed_roles``.
+
+    Args:
+        *allowed_roles: One or more ``Role`` enum values that are permitted.
+
+    Returns:
+        A FastAPI-compatible dependency callable that returns the ``User``
+        when authorised, or raises ``ForbiddenError`` otherwise.
+
+    Example::
+
+        SystemAdminOnly = Depends(require_roles(Role.SYSTEM_ADMIN))
+    """
+    from app.core.auth_exceptions import ForbiddenError
+    from app.models.enums import Role
+
+    def _check(user: CurrentUser) -> User:  # type: ignore[valid-type]
+        if user.role not in allowed_roles:
+            raise ForbiddenError("Insufficient permissions for this operation")
+        return user
+
+    return _check
+
+
+def _require_system_admin(user: CurrentUser) -> User:  # type: ignore[valid-type]
+    """Dependency: allow only SYSTEM_ADMIN users.
+
+    SYSTEM_ADMIN has global scope (tenant_id = NULL) and full access to
+    all tenant management operations.
+
+    Raises:
+        ForbiddenError: If the authenticated user is not a SYSTEM_ADMIN.
+    """
+    from app.core.auth_exceptions import ForbiddenError
+    from app.models.enums import Role
+
+    if user.role != Role.SYSTEM_ADMIN:
+        raise ForbiddenError("This operation requires SYSTEM_ADMIN privileges")
+    return user
+
+
+def _require_tenant_admin_or_above(user: CurrentUser) -> User:  # type: ignore[valid-type]
+    """Dependency: allow SYSTEM_ADMIN or TENANT_ADMIN users.
+
+    Used for tenant-scoped management operations such as creating projects
+    and managing honey tokens within a tenant's scope.
+
+    Raises:
+        ForbiddenError: If the authenticated user is a TENANT_USER.
+    """
+    from app.core.auth_exceptions import ForbiddenError
+    from app.models.enums import Role
+
+    if user.role not in (Role.SYSTEM_ADMIN, Role.TENANT_ADMIN):
+        raise ForbiddenError("This operation requires TENANT_ADMIN privileges or above")
+    return user
+
+
+# Typed dependency aliases for use in router signatures
+from typing import Callable  # noqa: E402 — kept at bottom to avoid circular imports
+
+SystemAdminRequired = Annotated[User, Depends(_require_system_admin)]
+TenantAdminRequired = Annotated[User, Depends(_require_tenant_admin_or_above)]
