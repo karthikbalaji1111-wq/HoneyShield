@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """m4_create_core_domain_models
 
 Revision ID: 4a30adb30e8f
@@ -12,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = '4a30adb30e8f'
-down_revision: str | None = '241248046477'
+down_revision: Optional[str] = '241248046477'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """expand audit log model for milestone 13
 
 Revision ID: e13aaeedde6d
@@ -12,7 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = 'e13aaeedde6d'
-down_revision: str | None = '4a30adb30e8f'
+down_revision: Optional[str] = '4a30adb30e8f'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

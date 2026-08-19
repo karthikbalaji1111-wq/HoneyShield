@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """create infrastructure models
 
 Revision ID: 241248046477
@@ -12,7 +15,7 @@ import sqlalchemy as sa
 
 
 revision: str = '241248046477'
-down_revision: str | None = None
+down_revision: Optional[str] = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

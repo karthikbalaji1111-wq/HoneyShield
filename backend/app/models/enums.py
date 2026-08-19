@@ -14,3 +14,9 @@ class EventSeverity(str, PyEnum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+
+class Role(str, PyEnum):
+    SYSTEM_ADMIN = "SYSTEM_ADMIN"
+    TENANT_ADMIN = "TENANT_ADMIN"
+    TENANT_USER = "TENANT_USER"

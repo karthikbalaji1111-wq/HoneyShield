@@ -1,3 +1,6 @@
+from __future__ import annotations
+from typing import Optional
+
 """fix audit_logs fk on delete set null
 
 Revision ID: a3f1c9d28b74
@@ -27,7 +30,7 @@ from alembic import op
 
 
 revision: str = 'a3f1c9d28b74'
-down_revision: str | None = 'e13aaeedde6d'
+down_revision: Optional[str] = 'e13aaeedde6d'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

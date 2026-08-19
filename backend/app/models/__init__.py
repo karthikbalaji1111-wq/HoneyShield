@@ -5,6 +5,7 @@ from app.models.detection_event import DetectionEvent
 from app.models.honey_token import HoneyToken
 from app.models.project import Project
 from app.models.tenant import Tenant
+from app.models.user import User
 
 __all__ = [
     "ApplicationConfig",
@@ -15,4 +16,5 @@ __all__ = [
     "ImmutableBaseModel",
     "Project",
     "Tenant",
+    "User",
 ]

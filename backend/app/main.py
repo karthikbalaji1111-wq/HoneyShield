@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.auth.router import router as auth_router
 from app.api.exception_handlers import register_exception_handlers
 from app.api.v1.health import health_payload
 from app.api.v1.router import api_router
@@ -34,6 +35,7 @@ app = FastAPI(
 )
 register_middlewares(app)
 register_exception_handlers(app)
+app.include_router(auth_router)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 app.include_router(ingestion_router)
 

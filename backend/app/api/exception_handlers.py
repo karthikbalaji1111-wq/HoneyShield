@@ -7,6 +7,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from app.core.auth_exceptions import (
+    AuthenticationError,
+    ForbiddenError,
+    InactiveUserError,
+    InvalidTokenError,
+    UnauthorizedError,
+    UserNotFoundError,
+)
 from app.core.exceptions import (
     BusinessRuleViolationError,
     DetectionEventNotFoundError,
@@ -52,7 +60,14 @@ async def honeyshield_exception_handler(
     exc: HoneyShieldException,
 ) -> JSONResponse:
     """Map HoneyShield domain exceptions to stable HTTP responses."""
-    if isinstance(exc, ValidationError):
+    # Auth exceptions — checked before generic domain exceptions
+    if isinstance(exc, (InvalidTokenError, UnauthorizedError, AuthenticationError, InactiveUserError)):
+        status_code = status.HTTP_401_UNAUTHORIZED
+    elif isinstance(exc, ForbiddenError):
+        status_code = status.HTTP_403_FORBIDDEN
+    elif isinstance(exc, UserNotFoundError):
+        status_code = status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, ValidationError):
         status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
     elif isinstance(
         exc,
