@@ -25,6 +25,7 @@ class ProjectService(BaseService):
         project_repo: ProjectRepository,
         tenant_repo: TenantRepository,
         audit_service: AuditLogService | None = None,
+        current_user: "User" | None = None,
     ) -> None:
         """Initialize the service with project and tenant repositories.
 
@@ -34,7 +35,7 @@ class ProjectService(BaseService):
             tenant_repo: Repository used to resolve owning tenants.
             audit_service: Service used to record audit events.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.project_repo = project_repo
         self.tenant_repo = tenant_repo
         self.audit_service = audit_service
@@ -64,6 +65,11 @@ class ProjectService(BaseService):
         try:
             tenant = self.tenant_repo.get_by_slug(tenant_slug)
             if not tenant:
+                raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(tenant.id)
+            except ForbiddenError:
                 raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
 
             existing_project = self.project_repo.get_by_domain(domain)
@@ -117,6 +123,11 @@ class ProjectService(BaseService):
         project = self.project_repo.get_by_domain(domain)
         if not project:
             raise ProjectNotFoundError(f"Project for domain '{domain}' not found")
+        from app.core.exceptions import ForbiddenError
+        try:
+            self._authorize_tenant_access(project.tenant_id)
+        except ForbiddenError:
+            raise ProjectNotFoundError(f"Project for domain '{domain}' not found")
         return project
 
     def list_projects(
@@ -143,7 +154,14 @@ class ProjectService(BaseService):
             tenant = self.tenant_repo.get_by_slug(tenant_slug)
             if not tenant:
                 raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(tenant.id)
+            except ForbiddenError:
+                raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
             tenant_id = tenant.id
+        elif self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            tenant_id = self.current_user.tenant_id
 
         if active_only:
             return self.project_repo.list_active(tenant_id=tenant_id)

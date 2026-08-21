@@ -14,14 +14,14 @@ from app.services.base import BaseService
 class AuditLogService(BaseService):
     """Securely records administrative actions for forensic auditing."""
 
-    def __init__(self, session: Session, audit_repo: AuditLogRepository) -> None:
+    def __init__(self, session: Session, audit_repo: AuditLogRepository, current_user: "User" | None = None) -> None:
         """Initialize the service.
 
         Args:
             session: The request-scoped SQLAlchemy session (owned by caller).
             audit_repo: Repository used to persist audit logs.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.audit_repo = audit_repo
 
     def record_action(

@@ -32,6 +32,7 @@ class HoneyTokenService(BaseService):
         token_repo: HoneyTokenRepository,
         project_repo: ProjectRepository,
         audit_service: AuditLogService | None = None,
+        current_user: "User" | None = None,
     ) -> None:
         """Initialize the service with token and project repositories.
 
@@ -41,7 +42,7 @@ class HoneyTokenService(BaseService):
             project_repo: Repository used to resolve owning projects.
             audit_service: Service used to record audit events.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.token_repo = token_repo
         self.project_repo = project_repo
         self.audit_service = audit_service
@@ -79,6 +80,11 @@ class HoneyTokenService(BaseService):
         try:
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
+                raise ProjectNotFoundError(f"Project '{project_domain}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(project.tenant_id)
+            except ForbiddenError:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
 
             existing_token = self.token_repo.get_by_token(token_value)
@@ -147,6 +153,11 @@ class HoneyTokenService(BaseService):
         try:
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
+                raise ProjectNotFoundError(f"Project '{project_domain}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(project.tenant_id)
+            except ForbiddenError:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
 
             # Try up to 3 times to generate a globally unique token
@@ -228,6 +239,11 @@ class HoneyTokenService(BaseService):
             token = self.token_repo.get_by_token(token_value)
             if not token:
                 raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(token.project.tenant_id)
+            except ForbiddenError:
+                raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
 
             token.is_active = False
             self.session.flush()
@@ -275,6 +291,13 @@ class HoneyTokenService(BaseService):
         try:
             old_token = self.token_repo.get_by_token(old_token_value)
             if not old_token:
+                raise HoneyTokenNotFoundError(
+                    f"Token '{old_token_value}' not found"
+                )
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(old_token.project.tenant_id)
+            except ForbiddenError:
                 raise HoneyTokenNotFoundError(
                     f"Token '{old_token_value}' not found"
                 )
@@ -340,11 +363,21 @@ class HoneyTokenService(BaseService):
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
+            from app.core.exceptions import ForbiddenError
+            try:
+                self._authorize_tenant_access(project.tenant_id)
+            except ForbiddenError:
+                raise ProjectNotFoundError(f"Project '{project_domain}' not found")
             project_id = project.id
 
         if active_only:
-            return self.token_repo.list_active(project_id=project_id)
-
-        if project_id is not None:
-            return self.token_repo.list_by_project(project_id)
-        return self.token_repo.list()
+            tokens = self.token_repo.list_active(project_id=project_id)
+        elif project_id is not None:
+            tokens = self.token_repo.list_by_project(project_id)
+        else:
+            tokens = self.token_repo.list()
+            
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and project_id is None:
+            return [t for t in tokens if t.project.tenant_id == self.current_user.tenant_id]
+            
+        return tokens

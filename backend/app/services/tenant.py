@@ -17,7 +17,7 @@ from app.services.base import BaseService
 class TenantService(BaseService):
     """Coordinate tenant lifecycle operations."""
 
-    def __init__(self, session: Session, tenant_repo: TenantRepository, audit_service: AuditLogService | None = None) -> None:
+    def __init__(self, session: Session, tenant_repo: TenantRepository, audit_service: AuditLogService | None = None, current_user: "User" | None = None) -> None:
         """Initialize the service with tenant persistence dependencies.
 
         Args:
@@ -25,7 +25,7 @@ class TenantService(BaseService):
             tenant_repo: Repository used to persist and retrieve tenants.
             audit_service: Service used to record audit events.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.tenant_repo = tenant_repo
         self.audit_service = audit_service
 
@@ -91,6 +91,13 @@ class TenantService(BaseService):
         tenant = self.tenant_repo.get_by_slug(slug)
         if not tenant:
             raise TenantNotFoundError(f"Tenant '{slug}' not found")
+        
+        from app.core.exceptions import ForbiddenError
+        try:
+            self._authorize_tenant_access(tenant.id)
+        except ForbiddenError:
+            raise TenantNotFoundError(f"Tenant '{slug}' not found")
+            
         return tenant
 
     def list_tenants(self, active_only: bool = True) -> list[Tenant]:
@@ -102,6 +109,12 @@ class TenantService(BaseService):
         Returns:
             Tenant records matching the requested activity filter.
         """
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            tenant = self.tenant_repo.get_by_id(self.current_user.tenant_id)
+            if not tenant or (active_only and not tenant.is_active):
+                return []
+            return [tenant]
+
         if active_only:
             return self.tenant_repo.list_active()
         return self.tenant_repo.list()

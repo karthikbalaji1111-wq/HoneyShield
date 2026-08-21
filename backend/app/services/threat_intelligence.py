@@ -60,7 +60,7 @@ class ThreatIntelligenceService(BaseService):
     _MAX_CURRENT_DAY_EVENTS = 5
     _TOP_ATTACKER_COUNT = 10
 
-    def __init__(self, session: Session, event_repo: DetectionEventRepository) -> None:
+    def __init__(self, session: Session, event_repo: DetectionEventRepository, current_user: "User" | None = None) -> None:
         """Initialize the service with its event repository.
 
         Args:
@@ -70,8 +70,14 @@ class ThreatIntelligenceService(BaseService):
         Returns:
             None.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.event_repo = event_repo
+
+    @property
+    def _tenant_id(self) -> int | None:
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            return self.current_user.tenant_id
+        return None
 
     def get_ip_profile(self, ip_address: str) -> IPProfile:
         """Build a threat-intelligence profile for one source IP address.
@@ -87,7 +93,7 @@ class ThreatIntelligenceService(BaseService):
             DetectionEventNotFoundError: If no matching events exist.
         """
         self._validate_required_fields(("IP address", ip_address))
-        aggregates = self.event_repo.aggregate_by_ip(ip_address=ip_address)
+        aggregates = self.event_repo.aggregate_by_ip(ip_address=ip_address, tenant_id=self._tenant_id)
         if not aggregates:
             raise DetectionEventNotFoundError(
                 f"No detection events found for IP address '{ip_address}'"
@@ -151,7 +157,7 @@ class ThreatIntelligenceService(BaseService):
             DetectionEventNotFoundError: If no matching events exist.
         """
         self._validate_required_fields(("IP address", ip_address))
-        events = self.event_repo.find_by_ip(ip_address=ip_address)
+        events = self.event_repo.find_by_ip(ip_address=ip_address, tenant_id=self._tenant_id)
         if not events:
             raise DetectionEventNotFoundError(
                 f"No detection events found for IP address '{ip_address}'"
@@ -166,7 +172,7 @@ class ThreatIntelligenceService(BaseService):
         """
         profiles = [
             self._build_ip_profile(aggregation)
-            for aggregation in self.event_repo.aggregate_by_ip()
+            for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
         ]
         return sorted(
             profiles,
@@ -185,7 +191,7 @@ class ThreatIntelligenceService(BaseService):
         """
         profiles = [
             self._build_ip_profile(aggregation)
-            for aggregation in self.event_repo.aggregate_by_ip()
+            for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
         ]
         return ThreatSummary(
             total_events=sum(profile.total_events for profile in profiles),

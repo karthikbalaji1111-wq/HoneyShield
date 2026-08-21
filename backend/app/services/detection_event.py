@@ -22,6 +22,7 @@ class DetectionEventService(BaseService):
         session: Session,
         event_repo: DetectionEventRepository,
         token_repo: HoneyTokenRepository,
+        current_user: "User" | None = None,
     ) -> None:
         """Initialize the service with event and token repositories.
 
@@ -33,7 +34,7 @@ class DetectionEventService(BaseService):
         Returns:
             None.
         """
-        super().__init__(session)
+        super().__init__(session, current_user=current_user)
         self.event_repo = event_repo
         self.token_repo = token_repo
 
@@ -139,10 +140,22 @@ class DetectionEventService(BaseService):
             raise ValidationError("Limit must be at least 1")
 
         honey_token_id = self._resolve_token_id(token_value)
-        return self.event_repo.list_recent(
+        if honey_token_id is not None:
+            token = self.token_repo.get_by_token(token_value)
+            if token:
+                from app.core.exceptions import ForbiddenError
+                try:
+                    self._authorize_tenant_access(token.project.tenant_id)
+                except ForbiddenError:
+                    raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+                
+        events = self.event_repo.list_recent(
             honey_token_id=honey_token_id,
             limit=limit,
         )
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and honey_token_id is None:
+            return [e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id]
+        return events
 
     def count_today(self, token_value: str | None = None) -> int:
         """Count events recorded since the current UTC day began.
@@ -158,6 +171,22 @@ class DetectionEventService(BaseService):
             HoneyTokenNotFoundError: If a supplied token does not exist.
         """
         honey_token_id = self._resolve_token_id(token_value)
+        if honey_token_id is not None:
+            token = self.token_repo.get_by_token(token_value)
+            if token:
+                from app.core.exceptions import ForbiddenError
+                try:
+                    self._authorize_tenant_access(token.project.tenant_id)
+                except ForbiddenError:
+                    raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+        
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and honey_token_id is None:
+            import datetime
+            events = self.event_repo.list_recent(limit=100000)
+            now = datetime.datetime.now(datetime.timezone.utc)
+            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            return len([e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id and e.triggered_at >= start_of_day])
+            
         return self.event_repo.count_today(honey_token_id=honey_token_id)
 
     def get_statistics(self) -> dict[str, int]:
@@ -169,6 +198,17 @@ class DetectionEventService(BaseService):
         Returns:
             A mapping containing total and current-day event counts.
         """
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            events = self.event_repo.list_recent(limit=1000000)
+            tenant_events = [e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id]
+            import datetime
+            today = datetime.datetime.now(datetime.timezone.utc).date()
+            today_events = len([e for e in tenant_events if e.triggered_at.date() == today])
+            return {
+                "total_events": len(tenant_events),
+                "today_events": today_events,
+            }
+
         total_events = self.event_repo.count()
         today_events = self.event_repo.count_today()
 

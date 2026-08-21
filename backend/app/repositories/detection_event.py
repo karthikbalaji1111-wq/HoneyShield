@@ -48,18 +48,19 @@ class DetectionEventRepository(BaseRepository[DetectionEvent]):
         )
         return list(self.session.scalars(stmt).all())
 
-    def find_by_ip(self, ip_address: str, limit: int = 100) -> list[DetectionEvent]:
-        stmt = (
-            select(DetectionEvent)
-            .where(DetectionEvent.ip_address == ip_address)
-            .order_by(DetectionEvent.triggered_at.desc())
-            .limit(limit)
-        )
+    def find_by_ip(self, ip_address: str, limit: int = 100, tenant_id: int | None = None) -> list[DetectionEvent]:
+        from app.models.honey_token import HoneyToken
+        from app.models.project import Project
+        stmt = select(DetectionEvent).where(DetectionEvent.ip_address == ip_address)
+        if tenant_id is not None:
+            stmt = stmt.join(HoneyToken, DetectionEvent.honey_token_id == HoneyToken.id).join(Project, HoneyToken.project_id == Project.id).where(Project.tenant_id == tenant_id)
+        stmt = stmt.order_by(DetectionEvent.triggered_at.desc()).limit(limit)
         return list(self.session.scalars(stmt).all())
 
     def aggregate_by_ip(
         self,
         ip_address: str | None = None,
+        tenant_id: int | None = None,
     ) -> list[IPActivityAggregation]:
         """Aggregate detection-event activity by source IP address.
 
@@ -74,6 +75,7 @@ class DetectionEventRepository(BaseRepository[DetectionEvent]):
         events_today = func.count(DetectionEvent.id).filter(
             DetectionEvent.triggered_at >= start_of_day
         )
+        from app.models.project import Project
         stmt = (
             select(
                 DetectionEvent.ip_address.label("ip_address"),
@@ -92,9 +94,10 @@ class DetectionEventRepository(BaseRepository[DetectionEvent]):
                 events_today.label("events_today"),
             )
             .join(HoneyToken, DetectionEvent.honey_token_id == HoneyToken.id)
-            .group_by(DetectionEvent.ip_address)
-            .order_by(DetectionEvent.ip_address)
         )
+        if tenant_id is not None:
+            stmt = stmt.join(Project, HoneyToken.project_id == Project.id).where(Project.tenant_id == tenant_id)
+        stmt = stmt.group_by(DetectionEvent.ip_address).order_by(DetectionEvent.ip_address)
         if ip_address is not None:
             stmt = stmt.where(DetectionEvent.ip_address == ip_address)
 
