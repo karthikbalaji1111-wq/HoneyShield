@@ -20,15 +20,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, sessionmaker
 
 # ---------------------------------------------------------------------------
-# Monkeypatch for application bug (ImportError)
-# The previous agent imported ForbiddenError from app.core.exceptions
-# instead of app.core.auth_exceptions in several services.
-# We patch it here to avoid modifying application code as requested.
-# ---------------------------------------------------------------------------
-from app.core import exceptions
-from app.core.auth_exceptions import ForbiddenError, UnauthorizedError
-exceptions.ForbiddenError = ForbiddenError
-exceptions.UnauthorizedError = UnauthorizedError
 
 from app.core.security import create_access_token, get_password_hash
 from app.db.session import get_db

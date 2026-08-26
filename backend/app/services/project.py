@@ -66,7 +66,7 @@ class ProjectService(BaseService):
             tenant = self.tenant_repo.get_by_slug(tenant_slug)
             if not tenant:
                 raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(tenant.id)
             except ForbiddenError:
@@ -123,7 +123,7 @@ class ProjectService(BaseService):
         project = self.project_repo.get_by_domain(domain)
         if not project:
             raise ProjectNotFoundError(f"Project for domain '{domain}' not found")
-        from app.core.exceptions import ForbiddenError
+        from app.core.auth_exceptions import ForbiddenError
         try:
             self._authorize_tenant_access(project.tenant_id)
         except ForbiddenError:
@@ -154,7 +154,7 @@ class ProjectService(BaseService):
             tenant = self.tenant_repo.get_by_slug(tenant_slug)
             if not tenant:
                 raise TenantNotFoundError(f"Tenant '{tenant_slug}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(tenant.id)
             except ForbiddenError:

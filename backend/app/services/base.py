@@ -33,7 +33,7 @@ class BaseService:
             ForbiddenError: If the user lacks permission.
             UnauthorizedError: If no user is authenticated.
         """
-        from app.core.exceptions import ForbiddenError, UnauthorizedError
+        from app.core.auth_exceptions import ForbiddenError, UnauthorizedError
         from app.models.enums import Role
         
         if not self.current_user:

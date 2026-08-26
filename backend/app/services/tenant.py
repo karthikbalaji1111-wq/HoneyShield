@@ -92,7 +92,7 @@ class TenantService(BaseService):
         if not tenant:
             raise TenantNotFoundError(f"Tenant '{slug}' not found")
         
-        from app.core.exceptions import ForbiddenError
+        from app.core.auth_exceptions import ForbiddenError
         try:
             self._authorize_tenant_access(tenant.id)
         except ForbiddenError:

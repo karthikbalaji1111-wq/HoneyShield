@@ -143,7 +143,7 @@ class DetectionEventService(BaseService):
         if honey_token_id is not None:
             token = self.token_repo.get_by_token(token_value)
             if token:
-                from app.core.exceptions import ForbiddenError
+                from app.core.auth_exceptions import ForbiddenError
                 try:
                     self._authorize_tenant_access(token.project.tenant_id)
                 except ForbiddenError:
@@ -174,7 +174,7 @@ class DetectionEventService(BaseService):
         if honey_token_id is not None:
             token = self.token_repo.get_by_token(token_value)
             if token:
-                from app.core.exceptions import ForbiddenError
+                from app.core.auth_exceptions import ForbiddenError
                 try:
                     self._authorize_tenant_access(token.project.tenant_id)
                 except ForbiddenError:

@@ -81,7 +81,7 @@ class HoneyTokenService(BaseService):
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(project.tenant_id)
             except ForbiddenError:
@@ -154,7 +154,7 @@ class HoneyTokenService(BaseService):
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(project.tenant_id)
             except ForbiddenError:
@@ -239,7 +239,7 @@ class HoneyTokenService(BaseService):
             token = self.token_repo.get_by_token(token_value)
             if not token:
                 raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(token.project.tenant_id)
             except ForbiddenError:
@@ -294,7 +294,7 @@ class HoneyTokenService(BaseService):
                 raise HoneyTokenNotFoundError(
                     f"Token '{old_token_value}' not found"
                 )
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(old_token.project.tenant_id)
             except ForbiddenError:
@@ -363,7 +363,7 @@ class HoneyTokenService(BaseService):
             project = self.project_repo.get_by_domain(project_domain)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
-            from app.core.exceptions import ForbiddenError
+            from app.core.auth_exceptions import ForbiddenError
             try:
                 self._authorize_tenant_access(project.tenant_id)
             except ForbiddenError:
