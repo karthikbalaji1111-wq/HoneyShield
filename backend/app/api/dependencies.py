@@ -223,3 +223,13 @@ def get_threat_intelligence_service(
     )
 
 
+
+from app.services.user_service import UserService
+
+def get_user_service(session: SessionDependency, current_user: OptionalUser = None) -> UserService:
+    """Provide a user service using the request-scoped database session."""
+    return UserService(
+        session=session,
+        current_user=current_user,
+        user_repo=UserRepository(session)
+    )

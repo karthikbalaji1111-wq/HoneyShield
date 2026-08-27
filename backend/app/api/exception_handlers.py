@@ -21,6 +21,7 @@ from app.core.exceptions import (
     DuplicateDomainError,
     DuplicateHoneyTokenError,
     DuplicateTenantError,
+    DuplicateEmailError,
     HoneyShieldException,
     HoneyTokenNotFoundError,
     ProjectNotFoundError,
@@ -83,6 +84,7 @@ async def honeyshield_exception_handler(
         exc,
         (
             DuplicateTenantError,
+    DuplicateEmailError,
             DuplicateDomainError,
             DuplicateHoneyTokenError,
             BusinessRuleViolationError,

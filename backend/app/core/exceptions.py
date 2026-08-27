@@ -39,3 +39,6 @@ class DuplicateDomainError(HoneyShieldException):
 
 class DuplicateHoneyTokenError(HoneyShieldException):
     """Raised when a honey token value is already in use."""
+
+class DuplicateEmailError(HoneyShieldException):
+    """Raised when an email is already in use."""

@@ -23,3 +23,8 @@ class UserRepository(BaseRepository[User]):
     def get_by_id(self, id: int) -> User | None:
         """Return the User with the given primary key, or None."""
         return self.session.get(User, id)
+
+    def list_by_tenant(self, tenant_id: int) -> list[User]:
+        """Return all Users belonging to the specified tenant."""
+        stmt = select(User).where(User.tenant_id == tenant_id)
+        return list(self.session.scalars(stmt).all())
