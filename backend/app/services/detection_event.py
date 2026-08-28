@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -110,6 +111,18 @@ class DetectionEventService(BaseService):
                 headers=headers,
             )
             self.session.commit()
+
+            # Publish to real-time subscribers (fire-and-forget after commit).
+            # A broadcast failure must never roll back the persisted event.
+            try:
+                self._publish_realtime_event(event)
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "Failed to broadcast detection event %s",
+                    event.id,
+                    exc_info=True,
+                )
+
             return event
         except Exception:
             try:
@@ -117,6 +130,37 @@ class DetectionEventService(BaseService):
             except Exception:
                 pass
             raise
+
+    def _publish_realtime_event(self, event: DetectionEvent) -> None:
+        """Publish a committed detection event to real-time subscribers.
+
+        Serialises the event into a minimal payload suitable for live
+        security feeds (no raw headers, no token secrets) and sends it
+        to tenant-matched subscribers via the in-process broadcaster.
+
+        Args:
+            event: The persisted, committed detection event.
+        """
+        from app.services.event_broadcaster import get_broadcaster
+
+        tenant_id = event.honey_token.project.tenant_id
+
+        event_data = {
+            "event_type": "detection_event",
+            "event_id": event.id,
+            "honey_token_id": event.honey_token_id,
+            "severity": event.severity.value,
+            "ip_address": event.ip_address,
+            "request_path": event.request_path,
+            "http_method": event.http_method,
+            "user_agent": event.user_agent,
+            "triggered_at": event.triggered_at.isoformat()
+            if event.triggered_at
+            else None,
+        }
+
+        get_broadcaster().publish(event_data, tenant_id)
+
 
     def list_recent_events(
         self,

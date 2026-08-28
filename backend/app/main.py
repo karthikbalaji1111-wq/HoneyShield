@@ -31,6 +31,10 @@ app = FastAPI(
             "name": "threat-intelligence",
             "description": "Threat intelligence derived from detection-event activity.",
         },
+        {
+            "name": "events-stream",
+            "description": "Real-time event streaming via WebSocket and SSE.",
+        },
     ],
 )
 register_middlewares(app)

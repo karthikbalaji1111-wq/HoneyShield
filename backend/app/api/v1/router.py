@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.detection_events import router as detection_event_router
+from app.api.v1.events_stream import router as events_stream_router
 from app.api.v1.health import router as health_router
 from app.api.v1.users import router as user_router
 
@@ -15,5 +16,6 @@ api_router.include_router(tenant_router)
 api_router.include_router(project_router)
 api_router.include_router(honey_token_router)
 api_router.include_router(detection_event_router)
+api_router.include_router(events_stream_router)
 api_router.include_router(threat_intelligence_router)
 api_router.include_router(user_router)
