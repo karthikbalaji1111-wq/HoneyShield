@@ -102,6 +102,15 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiters():
+    """Reset all in-memory rate limiters between tests for clean test isolation."""
+    from app.core.rate_limit import reset_all_limiters
+    reset_all_limiters()
+    yield
+    reset_all_limiters()
+
+
 # ---------------------------------------------------------------------------
 # Domain fixtures — two-tenant scenario
 # ---------------------------------------------------------------------------
@@ -266,3 +275,15 @@ def make_token(user: User) -> str:
 def auth_headers(user: User) -> dict[str, str]:
     """Return Authorization header dict for the given user."""
     return {"Authorization": f"Bearer {make_token(user)}"}
+
+
+@pytest.fixture()
+def admin_headers_a(admin_a: User) -> dict[str, str]:
+    """Provide authorization headers for tenant A admin."""
+    return auth_headers(admin_a)
+
+
+@pytest.fixture()
+def admin_headers_b(admin_b: User) -> dict[str, str]:
+    """Provide authorization headers for tenant B admin."""
+    return auth_headers(admin_b)

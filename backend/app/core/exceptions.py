@@ -1,4 +1,5 @@
 """Domain exceptions raised by HoneyShield services."""
+from __future__ import annotations
 
 
 class HoneyShieldException(Exception):
@@ -42,3 +43,16 @@ class DuplicateHoneyTokenError(HoneyShieldException):
 
 class DuplicateEmailError(HoneyShieldException):
     """Raised when an email is already in use."""
+
+
+class PayloadTooLargeError(HoneyShieldException):
+    """Raised when a request payload exceeds the configured maximum size."""
+
+
+class RateLimitExceededError(HoneyShieldException):
+    """Raised when a request exceeds the configured rate limit."""
+
+    def __init__(self, detail: str = "Rate limit exceeded. Please try again later.", retry_after: int = 60) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.retry_after = retry_after

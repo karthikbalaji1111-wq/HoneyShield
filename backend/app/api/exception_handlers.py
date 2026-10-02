@@ -1,4 +1,5 @@
 """HTTP exception mapping for domain and request-validation errors."""
+from __future__ import annotations
 
 from typing import Any
 
@@ -24,7 +25,9 @@ from app.core.exceptions import (
     DuplicateEmailError,
     HoneyShieldException,
     HoneyTokenNotFoundError,
+    PayloadTooLargeError,
     ProjectNotFoundError,
+    RateLimitExceededError,
     TenantNotFoundError,
     ValidationError,
 )
@@ -34,13 +37,14 @@ def _error_response(
     request: Request,
     status_code: int,
     detail: str,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Build a safe error response with the current request identifier."""
     content: dict[str, Any] = {
         "detail": detail,
         "request_id": getattr(request.state, "request_id", "-"),
     }
-    return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
 async def request_validation_exception_handler(
@@ -80,11 +84,20 @@ async def honeyshield_exception_handler(
         ),
     ):
         status_code = status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, PayloadTooLargeError):
+        status_code = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+    elif isinstance(exc, RateLimitExceededError):
+        return _error_response(
+            request=request,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=exc.detail,
+            headers={"Retry-After": str(exc.retry_after)} if exc.retry_after else None,
+        )
     elif isinstance(
         exc,
         (
             DuplicateTenantError,
-    DuplicateEmailError,
+            DuplicateEmailError,
             DuplicateDomainError,
             DuplicateHoneyTokenError,
             BusinessRuleViolationError,

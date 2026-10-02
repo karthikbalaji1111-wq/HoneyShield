@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,6 +34,33 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
     login_attempts_per_minute: int = Field(default=30, ge=1, le=1000)
     login_global_attempts_per_minute: int = Field(default=600, ge=1, le=10000)
+
+    # Phase 7 — Input Security & Rate Limiting Settings
+    max_request_body_bytes: int = Field(default=1_048_576, ge=1024, le=52_428_800)  # Default: 1 MB
+    rate_limit_enabled: bool = Field(default=True)
+    rate_limit_per_minute_authenticated: int = Field(default=300, ge=1, le=10000)
+    rate_limit_per_minute_public: int = Field(default=120, ge=1, le=10000)
+    rate_limit_global_per_minute: int = Field(default=5000, ge=10, le=100000)
+    ingestion_rate_limit_per_minute_ip: int = Field(default=120, ge=1, le=10000)
+    ingestion_rate_limit_per_minute_token: int = Field(default=60, ge=1, le=10000)
+
+    # Phase 7 — Header Security Settings
+    header_max_key_length: int = Field(default=64, ge=8, le=256)
+    header_max_value_length: int = Field(default=1024, ge=16, le=8192)
+    header_max_count: int = Field(default=30, ge=5, le=100)
+    header_max_total_bytes: int = Field(default=4096, ge=512, le=32768)
+
+    # Phase 7 — Trusted Proxy Settings
+    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def parse_trusted_proxies(cls, value: Any) -> list[str]:
+        if isinstance(value, str):
+            return [p.strip() for p in value.split(",") if p.strip()]
+        if isinstance(value, (list, tuple, set)):
+            return [str(p).strip() for p in value if str(p).strip()]
+        return ["127.0.0.1", "::1"]
 
     @field_validator("jwt_secret_key")
     @classmethod

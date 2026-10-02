@@ -1,9 +1,10 @@
 """Detection-event request and response schemas."""
+from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.models.enums import EventSeverity
 from app.schemas.base import SchemaBase
@@ -40,6 +41,23 @@ class DetectionEventCreate(SchemaBase):
         default=None,
         description="Optional captured request headers.",
     )
+
+    @field_validator("ip_address")
+    @classmethod
+    def validate_ip_address(cls, value: str) -> str:
+        """Validate that ip_address is a valid IPv4 or IPv6 format (F-028)."""
+        from app.core.ip_trust import normalize_ip
+        try:
+            return normalize_ip(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid IP address format: '{value}'") from exc
+
+    @field_validator("headers")
+    @classmethod
+    def validate_and_sanitize_headers(cls, value: dict[str, Any] | None) -> dict[str, str] | None:
+        """Sanitize, filter, and bound request headers before persistence (F-013)."""
+        from app.core.header_security import sanitize_forensic_headers
+        return sanitize_forensic_headers(value)
 
 
 class DetectionEventResponse(SchemaBase):

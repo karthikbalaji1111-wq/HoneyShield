@@ -102,6 +102,27 @@ class DetectionEventService(BaseService):
             ("HTTP method", http_method),
         )
 
+        from app.core.config import get_settings
+        from app.core.header_security import sanitize_forensic_headers
+        from app.core.ip_trust import normalize_ip
+
+        settings = get_settings()
+        try:
+            norm_ip = normalize_ip(ip_address)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+
+        clean_headers = sanitize_forensic_headers(
+            headers,
+            max_key_length=settings.header_max_key_length,
+            max_value_length=settings.header_max_value_length,
+            max_count=settings.header_max_count,
+            max_total_bytes=settings.header_max_total_bytes,
+        )
+
+        # Truncate user-agent if excessively large
+        clean_user_agent = user_agent[:1024] if user_agent and len(user_agent) > 1024 else user_agent
+
         try:
             token = self.token_repo.get_by_token(token_value)
             if not token:
@@ -121,12 +142,12 @@ class DetectionEventService(BaseService):
 
             event = self.event_repo.create(
                 honey_token_id=token_id,
-                ip_address=ip_address,
+                ip_address=norm_ip,
                 request_path=request_path,
                 http_method=http_method,
                 severity=severity,
-                user_agent=user_agent,
-                headers=headers,
+                user_agent=clean_user_agent,
+                headers=clean_headers,
             )
             self.session.commit()
 
