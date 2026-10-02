@@ -2,12 +2,7 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.13-blue?style=for-the-badge&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-Production-009688?style=for-the-badge&logo=fastapi)
-![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.x-red?style=for-the-badge)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-blue?style=for-the-badge&logo=postgresql)
-![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=for-the-badge&logo=docker)
-![Alembic](https://img.shields.io/badge/Alembic-Migrations-orange?style=for-the-badge)
+
 
 ### **AI-Ready Deception Security Platform**
 
