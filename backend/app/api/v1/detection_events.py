@@ -1,4 +1,5 @@
 """Version 1 detection-event API routes."""
+from __future__ import annotations
 
 from typing import Annotated
 
@@ -104,12 +105,31 @@ def list_detection_events(
         int,
         Query(
             ge=1,
+            le=1000,
             description="Maximum number of recent events to return.",
         ),
     ] = 100,
+    offset: Annotated[
+        int,
+        Query(
+            ge=0,
+            description="Offset for offset-based pagination.",
+        ),
+    ] = 0,
+    cursor: Annotated[
+        int | None,
+        Query(
+            description="Keyset cursor: return events strictly older than this event ID.",
+        ),
+    ] = None,
 ) -> list[DetectionEventResponse]:
     """List and serialize recent detection events. Requires authentication."""
-    return service.list_recent_events(token_value=token_value, limit=limit)
+    return service.list_recent_events(
+        token_value=token_value,
+        limit=limit,
+        offset=offset,
+        cursor=cursor,
+    )
 
 
 @router.get(

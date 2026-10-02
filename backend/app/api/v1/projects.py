@@ -1,4 +1,5 @@
 """Version 1 project API routes."""
+from __future__ import annotations
 
 from typing import Annotated
 
@@ -99,11 +100,21 @@ def list_projects(
         bool,
         Query(description="Whether to exclude inactive projects."),
     ] = True,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=100, description="Maximum number of projects to return."),
+    ] = 50,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Number of projects to skip."),
+    ] = 0,
 ) -> list[ProjectResponse]:
     """List and serialize projects. Requires authentication."""
     return service.list_projects(
         tenant_slug=tenant_slug,
         active_only=active_only,
+        limit=limit,
+        offset=offset,
     )
 
 

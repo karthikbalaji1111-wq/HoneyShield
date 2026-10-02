@@ -1,4 +1,5 @@
 """Version 1 honey-token API routes."""
+from __future__ import annotations
 
 from typing import Annotated
 
@@ -104,11 +105,21 @@ def list_honey_tokens(
         bool,
         Query(description="Whether to exclude revoked tokens."),
     ] = True,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=100, description="Maximum number of honey tokens to return."),
+    ] = 50,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Number of honey tokens to skip."),
+    ] = 0,
 ) -> list[HoneyTokenResponse]:
     """List and serialize honey tokens. Requires authentication."""
     return service.list_tokens(
         project_domain=project_domain,
         active_only=active_only,
+        limit=limit,
+        offset=offset,
     )
 
 

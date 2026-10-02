@@ -1,6 +1,6 @@
 """Detection-event service operations."""
-
 from __future__ import annotations
+
 
 import logging
 from typing import Any
@@ -61,6 +61,12 @@ class DetectionEventService(BaseService):
             raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
         return token.id
 
+    @property
+    def _scoped_tenant_id(self) -> int | None:
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            return self.current_user.tenant_id
+        return None
+
     def record_event(
         self,
         token_value: str,
@@ -97,9 +103,21 @@ class DetectionEventService(BaseService):
         )
 
         try:
-            token_id = self._resolve_token_id(token_value)
-            if token_id is None:
-                raise ValidationError("Token value is required for recording events")
+            token = self.token_repo.get_by_token(token_value)
+            if not token:
+                raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+
+            # Administrative cross-tenant guard:
+            # If current_user is authenticated and tenant-scoped, verify token ownership.
+            # Mask cross-tenant unauthorized access as 404 (HoneyTokenNotFoundError).
+            if self._scoped_tenant_id is not None:
+                from app.core.auth_exceptions import ForbiddenError
+                try:
+                    self._authorize_tenant_access(token.project.tenant_id)
+                except ForbiddenError:
+                    raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+
+            token_id = token.id
 
             event = self.event_repo.create(
                 honey_token_id=token_id,
@@ -166,40 +184,52 @@ class DetectionEventService(BaseService):
         self,
         token_value: str | None = None,
         limit: int = 100,
+        offset: int = 0,
+        cursor: int | None = None,
     ) -> list[DetectionEvent]:
         """List recent events globally or for a specific honey token.
 
         Args:
             token_value: Optional honey token value used to scope results.
-            limit: Maximum number of recent events to return.
+            limit: Maximum number of recent events to return (capped at 1000).
+            offset: Number of items to skip for offset-based pagination.
+            cursor: Optional event ID cursor for keyset pagination.
 
         Returns:
             Detection events ordered from newest to oldest.
 
         Raises:
-            ValidationError: If the limit is invalid or token value is blank.
+            ValidationError: If the limit or offset is invalid or token value is blank.
             HoneyTokenNotFoundError: If a supplied token does not exist.
         """
         if limit < 1:
             raise ValidationError("Limit must be at least 1")
+        if limit > 1000:
+            raise ValidationError("Limit cannot exceed 1000")
+        if offset < 0:
+            raise ValidationError("Offset cannot be negative")
 
-        honey_token_id = self._resolve_token_id(token_value)
-        if honey_token_id is not None:
+        honey_token_id = None
+        if token_value is not None:
             token = self.token_repo.get_by_token(token_value)
-            if token:
+            if not token:
+                raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+            if self._scoped_tenant_id is not None:
                 from app.core.auth_exceptions import ForbiddenError
                 try:
                     self._authorize_tenant_access(token.project.tenant_id)
                 except ForbiddenError:
                     raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
-                
-        events = self.event_repo.list_recent(
+            honey_token_id = token.id
+
+        scoped_tenant = self._scoped_tenant_id if honey_token_id is None else None
+        return self.event_repo.list_recent(
             honey_token_id=honey_token_id,
             limit=limit,
+            offset=offset,
+            cursor=cursor,
+            tenant_id=scoped_tenant,
         )
-        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and honey_token_id is None:
-            return [e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id]
-        return events
 
     def count_today(self, token_value: str | None = None) -> int:
         """Count events recorded since the current UTC day began.
@@ -214,27 +244,27 @@ class DetectionEventService(BaseService):
             ValidationError: If a supplied token value is blank.
             HoneyTokenNotFoundError: If a supplied token does not exist.
         """
-        honey_token_id = self._resolve_token_id(token_value)
-        if honey_token_id is not None:
+        honey_token_id = None
+        if token_value is not None:
             token = self.token_repo.get_by_token(token_value)
-            if token:
+            if not token:
+                raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
+            if self._scoped_tenant_id is not None:
                 from app.core.auth_exceptions import ForbiddenError
                 try:
                     self._authorize_tenant_access(token.project.tenant_id)
                 except ForbiddenError:
                     raise HoneyTokenNotFoundError(f"Token '{token_value}' not found")
-        
-        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and honey_token_id is None:
-            import datetime
-            events = self.event_repo.list_recent(limit=100000)
-            now = datetime.datetime.now(datetime.timezone.utc)
-            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            return len([e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id and e.triggered_at >= start_of_day])
-            
-        return self.event_repo.count_today(honey_token_id=honey_token_id)
+            honey_token_id = token.id
+
+        scoped_tenant = self._scoped_tenant_id if honey_token_id is None else None
+        return self.event_repo.count_today(
+            honey_token_id=honey_token_id,
+            tenant_id=scoped_tenant,
+        )
 
     def get_statistics(self) -> dict[str, int]:
-        """Return global detection-event totals.
+        """Return global or tenant-scoped detection-event totals in a single SQL pass (F-002).
 
         Args:
             None.
@@ -242,19 +272,8 @@ class DetectionEventService(BaseService):
         Returns:
             A mapping containing total and current-day event counts.
         """
-        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
-            events = self.event_repo.list_recent(limit=1000000)
-            tenant_events = [e for e in events if e.honey_token.project.tenant_id == self.current_user.tenant_id]
-            import datetime
-            today = datetime.datetime.now(datetime.timezone.utc).date()
-            today_events = len([e for e in tenant_events if e.triggered_at.date() == today])
-            return {
-                "total_events": len(tenant_events),
-                "today_events": today_events,
-            }
-
-        total_events = self.event_repo.count()
-        today_events = self.event_repo.count_today()
+        tenant_id = self._scoped_tenant_id
+        total_events, today_events = self.event_repo.count_summary(tenant_id=tenant_id)
 
         return {
             "total_events": total_events,

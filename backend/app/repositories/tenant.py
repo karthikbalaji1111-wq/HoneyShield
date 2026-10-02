@@ -19,6 +19,14 @@ class TenantRepository(BaseRepository[Tenant]):
         stmt = select(func.count()).select_from(Tenant).where(Tenant.slug == slug)
         return (self.session.scalar(stmt) or 0) > 0
 
-    def list_active(self) -> list[Tenant]:
-        stmt = select(Tenant).where(Tenant.is_active.is_(True))
+    def list(self, limit: int | None = None, offset: int = 0) -> list[Tenant]:
+        stmt = select(Tenant).order_by(Tenant.name.asc(), Tenant.id.asc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt).all())
+
+    def list_active(self, limit: int | None = None, offset: int = 0) -> list[Tenant]:
+        stmt = select(Tenant).where(Tenant.is_active.is_(True)).order_by(Tenant.name.asc(), Tenant.id.asc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt).all())

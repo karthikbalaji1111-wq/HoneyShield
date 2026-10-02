@@ -1,6 +1,6 @@
 """User persistence queries."""
-
 from __future__ import annotations
+
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +24,16 @@ class UserRepository(BaseRepository[User]):
         """Return the User with the given primary key, or None."""
         return self.session.get(User, id)
 
-    def list_by_tenant(self, tenant_id: int) -> list[User]:
-        """Return all Users belonging to the specified tenant."""
-        stmt = select(User).where(User.tenant_id == tenant_id)
+    def list(self, limit: int | None = None, offset: int = 0) -> list[User]:
+        """Return all Users with deterministic ordering and pagination."""
+        stmt = select(User).order_by(User.created_at.desc(), User.id.desc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt).all())
+
+    def list_by_tenant(self, tenant_id: int, limit: int | None = None, offset: int = 0) -> list[User]:
+        """Return all Users belonging to the specified tenant with deterministic ordering and pagination."""
+        stmt = select(User).where(User.tenant_id == tenant_id).order_by(User.created_at.desc(), User.id.desc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt).all())

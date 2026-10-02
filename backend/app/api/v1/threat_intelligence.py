@@ -1,8 +1,9 @@
 """Version 1 threat-intelligence API routes."""
+from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
 from app.api.dependencies import CurrentUser, get_threat_intelligence_service
 from app.schemas.error import ErrorResponse
@@ -99,9 +100,24 @@ def get_event_timeline(
         Depends(get_threat_intelligence_service),
     ],
     _: CurrentUser,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=500,
+            description="Maximum number of timeline events to return.",
+        ),
+    ] = 100,
+    offset: Annotated[
+        int,
+        Query(
+            ge=0,
+            description="Number of timeline events to skip.",
+        ),
+    ] = 0,
 ) -> TimelineResponse:
     """Retrieve and serialize one IP event timeline. Requires authentication."""
-    return service.get_event_timeline(ip_address=ip_address)
+    return service.get_event_timeline(ip_address=ip_address, limit=limit, offset=offset)
 
 
 @router.get(

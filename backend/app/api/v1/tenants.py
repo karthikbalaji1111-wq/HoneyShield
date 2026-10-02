@@ -1,4 +1,5 @@
 """Version 1 tenant API routes."""
+from __future__ import annotations
 
 from typing import Annotated
 
@@ -74,9 +75,17 @@ def list_tenants(
         bool,
         Query(description="Whether to exclude inactive tenants."),
     ] = True,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=100, description="Maximum number of tenants to return."),
+    ] = 50,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Number of tenants to skip."),
+    ] = 0,
 ) -> list[TenantResponse]:
     """List and serialize tenants. Requires authentication."""
-    return service.list_tenants(active_only=active_only)
+    return service.list_tenants(active_only=active_only, limit=limit, offset=offset)
 
 
 @router.get(

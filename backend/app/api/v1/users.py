@@ -1,8 +1,9 @@
 """User management endpoints."""
+from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.api.dependencies import TenantAdminRequired, get_user_service
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
@@ -23,9 +24,17 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 def list_users(
     _admin: TenantAdminRequired,
     user_service: UserServiceDep,
+    limit: Annotated[
+        int,
+        Query(ge=1, le=100, description="Maximum number of users to return."),
+    ] = 50,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Number of users to skip."),
+    ] = 0,
 ) -> list[UserResponse]:
     """Retrieve all accessible users."""
-    return user_service.list_users()
+    return user_service.list_users(limit=limit, offset=offset)
 
 
 @router.get(

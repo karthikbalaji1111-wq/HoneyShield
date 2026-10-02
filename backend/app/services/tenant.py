@@ -1,6 +1,6 @@
 """Tenant service operations."""
-
 from __future__ import annotations
+
 
 from sqlalchemy.orm import Session
 
@@ -100,11 +100,18 @@ class TenantService(BaseService):
             
         return tenant
 
-    def list_tenants(self, active_only: bool = True) -> list[Tenant]:
-        """List tenants, optionally limited to active records.
+    def list_tenants(
+        self,
+        active_only: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Tenant]:
+        """List tenants, optionally limited to active records with pagination.
 
         Args:
             active_only: Whether to exclude inactive tenants.
+            limit: Optional maximum number of records to return.
+            offset: Number of records to skip.
 
         Returns:
             Tenant records matching the requested activity filter.
@@ -113,14 +120,14 @@ class TenantService(BaseService):
             tenant = self.tenant_repo.get_by_id(self.current_user.tenant_id)
             if not tenant or (active_only and not tenant.is_active):
                 return []
-            return [tenant]
+            return [tenant] if offset == 0 else []
 
         if active_only:
-            return self.tenant_repo.list_active()
-        return self.tenant_repo.list()
+            return self.tenant_repo.list_active(limit=limit, offset=offset)
+        return self.tenant_repo.list(limit=limit, offset=offset)
 
     def delete_tenant(self, slug: str) -> None:
-        """Delete a tenant and its cascade-managed dependents.
+        """Deactivate a tenant and its cascade-managed dependents while preserving forensic records.
 
         Args:
             slug: Unique tenant identifier.
@@ -130,12 +137,20 @@ class TenantService(BaseService):
 
         Raises:
             ValidationError: If the slug is blank.
-            TenantNotFoundError: If no matching tenant exists.
+            TenantNotFoundError: If no matching active tenant exists.
         """
         try:
             tenant = self.get_tenant(slug)
-            self.tenant_repo.delete(tenant.id)
-            
+            if not tenant.is_active:
+                raise TenantNotFoundError(f"Tenant with slug '{slug}' not found")
+
+            tenant.is_active = False
+            for project in tenant.projects:
+                project.is_active = False
+                for token in project.honey_tokens:
+                    token.is_active = False
+            self.session.flush()
+
             if self.audit_service:
                 self.audit_service.record_action(
                     event_type="TENANT_DELETED",
@@ -146,7 +161,7 @@ class TenantService(BaseService):
                     target_id=tenant.id,
                     tenant_id=tenant.id,
                 )
-                
+
             self.session.commit()
         except Exception:
             try:

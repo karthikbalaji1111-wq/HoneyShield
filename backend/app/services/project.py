@@ -1,6 +1,6 @@
 """Project service operations."""
-
 from __future__ import annotations
+
 
 from sqlalchemy.orm import Session
 
@@ -134,12 +134,16 @@ class ProjectService(BaseService):
         self,
         tenant_slug: str | None = None,
         active_only: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Project]:
-        """List projects with optional tenant and activity filters.
+        """List projects with optional tenant, activity, and pagination filters.
 
         Args:
             tenant_slug: Optional slug limiting results to one tenant.
             active_only: Whether to exclude inactive projects.
+            limit: Optional maximum number of records to return.
+            offset: Number of records to skip.
 
         Returns:
             Project records matching the requested filters.
@@ -164,14 +168,18 @@ class ProjectService(BaseService):
             tenant_id = self.current_user.tenant_id
 
         if active_only:
-            return self.project_repo.list_active(tenant_id=tenant_id)
+            return self.project_repo.list_active(tenant_id=tenant_id, limit=limit, offset=offset)
 
         if tenant_id is not None:
-            return self.project_repo.list_by_tenant(tenant_id)
-        return self.project_repo.list()
+            return self.project_repo.list_by_tenant(tenant_id, limit=limit, offset=offset)
+        from sqlalchemy import select
+        stmt = select(Project).order_by(Project.created_at.desc(), Project.id.desc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(self.session.scalars(stmt).all())
 
     def delete_project(self, domain: str) -> None:
-        """Delete a project and its cascade-managed dependents.
+        """Deactivate a project and its honey tokens while preserving forensic records.
 
         Args:
             domain: Project domain identifier.
@@ -181,12 +189,18 @@ class ProjectService(BaseService):
 
         Raises:
             ValidationError: If the domain is blank.
-            ProjectNotFoundError: If no matching project exists.
+            ProjectNotFoundError: If no matching active project exists.
         """
         try:
             project = self.get_project(domain)
-            self.project_repo.delete(project.id)
-            
+            if not project.is_active:
+                raise ProjectNotFoundError(f"Project for domain '{domain}' not found")
+
+            project.is_active = False
+            for token in project.honey_tokens:
+                token.is_active = False
+            self.session.flush()
+
             if self.audit_service:
                 self.audit_service.record_action(
                     event_type="PROJECT_DELETED",
@@ -198,7 +212,7 @@ class ProjectService(BaseService):
                     tenant_id=project.tenant_id,
                     project_id=project.id,
                 )
-                
+
             self.session.commit()
         except Exception:
             try:

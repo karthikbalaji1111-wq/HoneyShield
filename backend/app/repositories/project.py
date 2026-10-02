@@ -17,12 +17,17 @@ class ProjectRepository(BaseRepository[Project]):
         )
         return self.session.scalar(stmt)
 
-    def list_by_tenant(self, tenant_id: int) -> list[Project]:
-        stmt = select(Project).where(Project.tenant_id == tenant_id)
+    def list_by_tenant(self, tenant_id: int, limit: int | None = None, offset: int = 0) -> list[Project]:
+        stmt = select(Project).where(Project.tenant_id == tenant_id).order_by(Project.created_at.desc(), Project.id.desc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt).all())
 
-    def list_active(self, tenant_id: int | None = None) -> list[Project]:
+    def list_active(self, tenant_id: int | None = None, limit: int | None = None, offset: int = 0) -> list[Project]:
         stmt = select(Project).where(Project.is_active.is_(True))
         if tenant_id is not None:
             stmt = stmt.where(Project.tenant_id == tenant_id)
+        stmt = stmt.order_by(Project.created_at.desc(), Project.id.desc()).offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.scalars(stmt).all())

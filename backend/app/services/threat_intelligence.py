@@ -1,6 +1,6 @@
 """Threat-intelligence service operations."""
-
 from __future__ import annotations
+
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -143,22 +143,44 @@ class ThreatIntelligenceService(BaseService):
             repeated_event_score + token_score + project_score + current_day_score,
         )
 
-    def get_event_timeline(self, ip_address: str) -> EventTimeline:
+    def get_event_timeline(
+        self,
+        ip_address: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> EventTimeline:
         """Return the most recent event timeline in chronological order.
 
         Args:
             ip_address: Source IP address whose events should be retrieved.
+            limit: Maximum number of events to return.
+            offset: Number of events to skip.
 
         Returns:
-            A timeline containing up to 100 events ordered oldest to newest.
+            A timeline containing events ordered oldest to newest.
 
         Raises:
-            ValidationError: If the IP address is blank.
+            ValidationError: If the IP address is blank or pagination invalid.
             DetectionEventNotFoundError: If no matching events exist.
         """
         self._validate_required_fields(("IP address", ip_address))
-        events = self.event_repo.find_by_ip(ip_address=ip_address, tenant_id=self._tenant_id)
-        if not events:
+        if limit < 1:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Limit must be at least 1")
+        if limit > 500:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Limit cannot exceed 500")
+        if offset < 0:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Offset cannot be negative")
+
+        events = self.event_repo.find_by_ip(
+            ip_address=ip_address,
+            limit=limit,
+            offset=offset,
+            tenant_id=self._tenant_id,
+        )
+        if not events and offset == 0:
             raise DetectionEventNotFoundError(
                 f"No detection events found for IP address '{ip_address}'"
             )
@@ -170,10 +192,15 @@ class ThreatIntelligenceService(BaseService):
         Returns:
             Up to ten IP profiles ordered by descending score and event count.
         """
-        profiles = [
-            self._build_ip_profile(aggregation)
-            for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
-        ]
+        from app.core.config import get_settings
+        from app.db.session import set_query_timeout
+
+        settings = get_settings()
+        with set_query_timeout(self.session, settings.db_analytics_timeout_ms):
+            profiles = [
+                self._build_ip_profile(aggregation)
+                for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
+            ]
         return sorted(
             profiles,
             key=lambda profile: (
@@ -189,10 +216,15 @@ class ThreatIntelligenceService(BaseService):
         Returns:
             Total events, distinct source IPs, and the highest calculated score.
         """
-        profiles = [
-            self._build_ip_profile(aggregation)
-            for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
-        ]
+        from app.core.config import get_settings
+        from app.db.session import set_query_timeout
+
+        settings = get_settings()
+        with set_query_timeout(self.session, settings.db_analytics_timeout_ms):
+            profiles = [
+                self._build_ip_profile(aggregation)
+                for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
+            ]
         return ThreatSummary(
             total_events=sum(profile.total_events for profile in profiles),
             distinct_ip_addresses=len(profiles),

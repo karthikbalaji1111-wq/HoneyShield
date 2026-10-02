@@ -1,6 +1,6 @@
 """Honey-token service operations."""
-
 from __future__ import annotations
+
 
 from typing import Any
 
@@ -160,6 +160,9 @@ class HoneyTokenService(BaseService):
             except ForbiddenError:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
 
+            project_id = project.id
+            tenant_id = project.tenant_id
+
             # Try up to 3 times to generate a globally unique token
             for _ in range(3):
                 generated = generator.generate(project_domain, params or {})
@@ -168,11 +171,13 @@ class HoneyTokenService(BaseService):
                 if not generated.token_value:
                     raise ValidationError("Generator produced an empty token value")
 
+                # Check if generated value already exists before attempting insert
+                if self.token_repo.get_by_token(generated.token_value):
+                    continue
 
-                
                 try:
                     token = self.token_repo.create(
-                        project_id=project.id,
+                        project_id=project_id,
                         token_type=token_type,
                         token_value=generated.token_value,
                         label=generated.label,
@@ -188,8 +193,8 @@ class HoneyTokenService(BaseService):
                             actor_source="api",
                             target_entity="honey_token",
                             target_id=token.id,
-                            tenant_id=project.tenant_id,
-                            project_id=project.id,
+                            tenant_id=tenant_id,
+                            project_id=project_id,
                         )
 
                     self.session.commit()
@@ -343,12 +348,16 @@ class HoneyTokenService(BaseService):
         self,
         project_domain: str | None = None,
         active_only: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[HoneyToken]:
-        """List honey tokens with optional project and activity filters.
+        """List honey tokens with optional project, activity, and pagination filters.
 
         Args:
             project_domain: Optional domain limiting results to one project.
             active_only: Whether to exclude revoked tokens.
+            limit: Optional maximum number of records to return.
+            offset: Number of records to skip.
 
         Returns:
             Honey tokens matching the requested filters.
@@ -370,14 +379,18 @@ class HoneyTokenService(BaseService):
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
             project_id = project.id
 
-        if active_only:
-            tokens = self.token_repo.list_active(project_id=project_id)
-        elif project_id is not None:
-            tokens = self.token_repo.list_by_project(project_id)
-        else:
-            tokens = self.token_repo.list()
-            
-        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN" and project_id is None:
-            return [t for t in tokens if t.project.tenant_id == self.current_user.tenant_id]
-            
-        return tokens
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            return self.token_repo.list_for_tenant(
+                tenant_id=self.current_user.tenant_id,
+                active_only=active_only,
+                project_id=project_id,
+                limit=limit,
+                offset=offset,
+            )
+
+        return self.token_repo.list_global(
+            active_only=active_only,
+            project_id=project_id,
+            limit=limit,
+            offset=offset,
+        )
