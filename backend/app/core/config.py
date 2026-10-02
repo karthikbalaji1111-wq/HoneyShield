@@ -69,6 +69,21 @@ class Settings(BaseSettings):
     )
     cors_max_age: int = Field(default=600, ge=0, le=86400)
 
+    # Phase 10 — Security Headers Settings (F-015)
+    security_headers_enabled: bool = Field(default=True)
+    security_headers_x_content_type_options: str = Field(default="nosniff")
+    security_headers_x_frame_options: str = Field(default="DENY")
+    security_headers_referrer_policy: str = Field(default="no-referrer")
+    security_headers_csp: str = Field(default="default-src 'none'; frame-ancestors 'none'")
+    security_headers_permissions_policy: str = Field(
+        default="accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+    )
+    security_headers_cache_control: str = Field(default="no-store")
+    security_headers_hsts_enabled: bool = Field(default=False)
+    security_headers_hsts_max_age: int = Field(default=31536000, ge=0, le=63072000)
+    security_headers_hsts_include_subdomains: bool = Field(default=True)
+    security_headers_hsts_preload: bool = Field(default=False)
+
     @field_validator("trusted_proxies", mode="before")
     @classmethod
     def parse_trusted_proxies(cls, value: Any) -> list[str]:
@@ -228,6 +243,42 @@ class Settings(BaseSettings):
             if not any(h.lower() == raw.lower() for h in validated_headers):
                 validated_headers.append(raw)
         return validated_headers or ["X-Request-ID", "X-Process-Time-Ms", "Retry-After"]
+
+    @field_validator("security_headers_x_frame_options")
+    @classmethod
+    def validate_x_frame_options(cls, value: str) -> str:
+        val = value.strip().upper()
+        if val not in ("DENY", "SAMEORIGIN"):
+            raise ValueError(f"Invalid X-Frame-Options '{value}': must be DENY or SAMEORIGIN")
+        return val
+
+    @field_validator("security_headers_referrer_policy")
+    @classmethod
+    def validate_referrer_policy(cls, value: str) -> str:
+        valid_policies = {
+            "no-referrer",
+            "no-referrer-when-downgrade",
+            "origin",
+            "origin-when-cross-origin",
+            "same-origin",
+            "strict-origin",
+            "strict-origin-when-cross-origin",
+            "unsafe-url",
+        }
+        val = value.strip().lower()
+        if val not in valid_policies:
+            raise ValueError(f"Invalid Referrer-Policy '{value}'")
+        return val
+
+    @field_validator("security_headers_csp")
+    @classmethod
+    def validate_csp(cls, value: str) -> str:
+        val = value.strip()
+        if not val:
+            raise ValueError("Content-Security-Policy must not be empty")
+        if "'unsafe-inline'" in val or "'unsafe-eval'" in val:
+            raise ValueError("Unsafe CSP directives ('unsafe-inline', 'unsafe-eval') are forbidden for the API")
+        return val
 
     @field_validator("jwt_secret_key")
     @classmethod

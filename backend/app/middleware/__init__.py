@@ -9,6 +9,7 @@ from app.middleware.exception_handler import GlobalExceptionMiddleware
 from app.middleware.rate_limit import ApiRateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.request_timing import RequestTimingMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 
 
 def register_middlewares(app: FastAPI) -> None:
@@ -16,11 +17,12 @@ def register_middlewares(app: FastAPI) -> None:
 
     Wrapping Order (Outermost to Innermost):
     1. RequestIDMiddleware: Assigns / extracts X-Request-ID header and logging token.
-    2. CORSMiddleware: Handles cross-origin requests, preflight OPTIONS, and CORS headers (F-014).
-    3. RequestBodySizeMiddleware: Rejects oversized bodies before processing (F-010).
-    4. ApiRateLimitMiddleware: Bounded admission control for API traffic (F-011).
-    5. RequestTimingMiddleware: Computes execution latency and appends X-Process-Time-Ms.
-    6. GlobalExceptionMiddleware: Catch-all fallback for uncaught internal server errors.
+    2. SecurityHeadersMiddleware: Enforces centralized HTTP response security headers (F-015).
+    3. CORSMiddleware: Handles cross-origin requests, preflight OPTIONS, and CORS headers (F-014).
+    4. RequestBodySizeMiddleware: Rejects oversized bodies before processing (F-010).
+    5. ApiRateLimitMiddleware: Bounded admission control for API traffic (F-011).
+    6. RequestTimingMiddleware: Computes execution latency and appends X-Process-Time-Ms.
+    7. GlobalExceptionMiddleware: Catch-all fallback for uncaught internal server errors.
     """
     settings = get_settings()
 
@@ -37,4 +39,5 @@ def register_middlewares(app: FastAPI) -> None:
         expose_headers=settings.cors_expose_headers,
         max_age=settings.cors_max_age,
     )
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestIDMiddleware)
