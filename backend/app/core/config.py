@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
+import json
+import urllib.parse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,16 +53,181 @@ class Settings(BaseSettings):
     header_max_total_bytes: int = Field(default=4096, ge=512, le=32768)
 
     # Phase 7 — Trusted Proxy Settings
-    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+    trusted_proxies: Union[list[str], str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+
+    # Phase 11 — CORS Policy Settings (F-014)
+    cors_allowed_origins: Union[list[str], str] = Field(default_factory=list)
+    cors_allow_credentials: bool = Field(default=False)
+    cors_allow_methods: Union[list[str], str] = Field(
+        default_factory=lambda: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    )
+    cors_allow_headers: Union[list[str], str] = Field(
+        default_factory=lambda: ["Authorization", "Content-Type", "Accept", "X-Request-ID"]
+    )
+    cors_expose_headers: Union[list[str], str] = Field(
+        default_factory=lambda: ["X-Request-ID", "X-Process-Time-Ms", "Retry-After"]
+    )
+    cors_max_age: int = Field(default=600, ge=0, le=86400)
 
     @field_validator("trusted_proxies", mode="before")
     @classmethod
     def parse_trusted_proxies(cls, value: Any) -> list[str]:
         if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    value = json.loads(trimmed)
+                except Exception:
+                    pass
+        if isinstance(value, str):
             return [p.strip() for p in value.split(",") if p.strip()]
         if isinstance(value, (list, tuple, set)):
             return [str(p).strip() for p in value if str(p).strip()]
         return ["127.0.0.1", "::1"]
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_and_validate_cors_origins(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    value = json.loads(trimmed)
+                except Exception:
+                    pass
+        raw_list: list[str]
+        if isinstance(value, str):
+            raw_list = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            raw_list = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError(f"Invalid type for cors_allowed_origins: {type(value)}")
+
+        validated_origins: list[str] = []
+        for raw in raw_list:
+            if raw == "*":
+                raise ValueError("Wildcard '*' CORS origins are strictly forbidden")
+            if "*" in raw:
+                raise ValueError(f"Wildcard patterns are forbidden in CORS origins: {raw}")
+
+            parsed = urllib.parse.urlsplit(raw)
+            scheme = parsed.scheme.lower()
+            if scheme not in ("http", "https"):
+                raise ValueError(
+                    f"Invalid CORS origin scheme '{parsed.scheme}': only http and https are permitted ({raw})"
+                )
+
+            netloc = parsed.netloc.lower()
+            if not netloc or not parsed.hostname:
+                raise ValueError(f"Invalid CORS origin: missing host ({raw})")
+
+            if parsed.username or parsed.password:
+                raise ValueError(f"CORS origin must not contain user credentials: {raw}")
+
+            if parsed.path and parsed.path != "/":
+                raise ValueError(f"CORS origin must not contain a path component: {raw}")
+
+            if parsed.query:
+                raise ValueError(f"CORS origin must not contain query parameters: {raw}")
+
+            if parsed.fragment:
+                raise ValueError(f"CORS origin must not contain URL fragments: {raw}")
+
+            canonical_origin = f"{scheme}://{netloc}"
+            if canonical_origin not in validated_origins:
+                validated_origins.append(canonical_origin)
+
+        return validated_origins
+
+    @field_validator("cors_allow_methods", mode="before")
+    @classmethod
+    def parse_and_validate_cors_methods(cls, value: Any) -> list[str]:
+        if value is None:
+            return ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    value = json.loads(trimmed)
+                except Exception:
+                    pass
+        raw_list: list[str]
+        if isinstance(value, str):
+            raw_list = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            raw_list = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError(f"Invalid type for cors_allow_methods: {type(value)}")
+
+        allowed_methods = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
+        validated_methods: list[str] = []
+        for raw in raw_list:
+            method = raw.upper()
+            if method == "*":
+                raise ValueError("Wildcard '*' is forbidden in cors_allow_methods; specify explicit methods")
+            if method not in allowed_methods:
+                raise ValueError(f"Invalid HTTP method '{method}' in cors_allow_methods")
+            if method not in validated_methods:
+                validated_methods.append(method)
+        return validated_methods or ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+    @field_validator("cors_allow_headers", mode="before")
+    @classmethod
+    def parse_and_validate_cors_headers(cls, value: Any) -> list[str]:
+        if value is None:
+            return ["Authorization", "Content-Type", "Accept", "X-Request-ID"]
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    value = json.loads(trimmed)
+                except Exception:
+                    pass
+        raw_list: list[str]
+        if isinstance(value, str):
+            raw_list = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            raw_list = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError(f"Invalid type for cors_allow_headers: {type(value)}")
+
+        validated_headers: list[str] = []
+        for raw in raw_list:
+            if raw == "*":
+                raise ValueError("Wildcard '*' is forbidden in cors_allow_headers; specify explicit headers")
+            if not any(h.lower() == raw.lower() for h in validated_headers):
+                validated_headers.append(raw)
+        return validated_headers or ["Authorization", "Content-Type", "Accept", "X-Request-ID"]
+
+    @field_validator("cors_expose_headers", mode="before")
+    @classmethod
+    def parse_and_validate_cors_expose_headers(cls, value: Any) -> list[str]:
+        if value is None:
+            return ["X-Request-ID", "X-Process-Time-Ms", "Retry-After"]
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed.startswith("[") and trimmed.endswith("]"):
+                try:
+                    value = json.loads(trimmed)
+                except Exception:
+                    pass
+        raw_list: list[str]
+        if isinstance(value, str):
+            raw_list = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple, set)):
+            raw_list = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError(f"Invalid type for cors_expose_headers: {type(value)}")
+
+        validated_headers: list[str] = []
+        for raw in raw_list:
+            if raw == "*":
+                raise ValueError("Wildcard '*' is forbidden in cors_expose_headers; specify explicit headers")
+            if not any(h.lower() == raw.lower() for h in validated_headers):
+                validated_headers.append(raw)
+        return validated_headers or ["X-Request-ID", "X-Process-Time-Ms", "Retry-After"]
 
     @field_validator("jwt_secret_key")
     @classmethod
@@ -75,6 +242,12 @@ class Settings(BaseSettings):
             if not self.database_url:
                 if not self.postgres_password or self.postgres_password == "honeyshield_dev_password":
                     raise ValueError("POSTGRES_PASSWORD must be explicitly configured in production")
+        return self
+
+    @model_validator(mode="after")
+    def validate_cors_credentials(self) -> Settings:
+        if self.cors_allow_credentials and "*" in self.cors_allowed_origins:
+            raise ValueError("Wildcard origins cannot be used when cors_allow_credentials is True")
         return self
 
     model_config = SettingsConfigDict(
