@@ -16,6 +16,7 @@ from app.core.rate_limit import api_limiter
 EXEMPT_PATHS = frozenset({
     "/",
     "/health",
+    "/ready",
     "/api/v1/health",
     "/api/v1/ready",
     "/docs",
