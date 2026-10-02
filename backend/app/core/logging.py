@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextvars
 import datetime as dt
 import json
@@ -19,7 +21,7 @@ class RequestIdFilter(logging.Filter):
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "timestamp": dt.datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+            "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

@@ -1,12 +1,13 @@
 """FastAPI dependency providers for application services."""
+from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
 from app.core.auth_exceptions import InvalidTokenError, UserNotFoundError, InactiveUserError
-from app.core.security import decode_access_token
+from app.core.security import resolve_access_token
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.audit_log import AuditLogRepository
@@ -45,37 +46,12 @@ def get_current_user(
         UserNotFoundError: If the user_id from the token has no matching database record.
         InactiveUserError: If the matched user account is disabled.
     """
-    import jwt as pyjwt
-
     if not authorization or not authorization.lower().startswith("bearer "):
         raise InvalidTokenError("Missing or malformed Authorization header")
 
     raw_token = authorization[len("bearer "):].strip()
 
-    try:
-        payload = decode_access_token(raw_token)
-    except pyjwt.ExpiredSignatureError:
-        raise InvalidTokenError("Token has expired")
-    except pyjwt.InvalidTokenError:
-        raise InvalidTokenError("Token is invalid")
-
-    user_id_str: str | None = payload.get("sub")
-    if not user_id_str:
-        raise InvalidTokenError("Token is missing subject claim")
-
-    try:
-        user_id = int(user_id_str)
-    except (ValueError, TypeError):
-        raise InvalidTokenError("Token subject is not a valid user identifier")
-
-    user = UserRepository(session).get_by_id(user_id)
-    if user is None:
-        raise UserNotFoundError("Authenticated user no longer exists")
-
-    if not user.is_active:
-        raise InactiveUserError("Account is disabled")
-
-    return user
+    return resolve_access_token(raw_token, session)
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
@@ -101,15 +77,32 @@ def require_roles(*allowed_roles: "Role") -> "Callable[[User], User]":
     from app.core.auth_exceptions import ForbiddenError
     from app.models.enums import Role
 
-    def _check(user: CurrentUser) -> User:  # type: ignore[valid-type]
+    def _check(user: CurrentUser, session: SessionDependency) -> User:  # type: ignore[valid-type]
         if user.role not in allowed_roles:
+            try:
+                audit_service = get_audit_log_service(session, user)
+                audit_service.record_action(
+                    event_type="AUTHORIZATION_DENIED",
+                    severity="WARNING",
+                    message="Insufficient permissions for this operation",
+                    actor_source="api",
+                    actor_user_id=user.id,
+                    tenant_id=user.tenant_id,
+                    event_metadata={"required_roles": [r.value for r in allowed_roles], "actual_role": user.role.value},
+                )
+                session.commit()
+            except Exception:
+                try:
+                    session.rollback()
+                except Exception:
+                    pass
             raise ForbiddenError("Insufficient permissions for this operation")
         return user
 
     return _check
 
 
-def _require_system_admin(user: CurrentUser) -> User:  # type: ignore[valid-type]
+def _require_system_admin(user: CurrentUser, session: SessionDependency) -> User:  # type: ignore[valid-type]
     """Dependency: allow only SYSTEM_ADMIN users.
 
     SYSTEM_ADMIN has global scope (tenant_id = NULL) and full access to
@@ -122,11 +115,28 @@ def _require_system_admin(user: CurrentUser) -> User:  # type: ignore[valid-type
     from app.models.enums import Role
 
     if user.role != Role.SYSTEM_ADMIN:
+        try:
+            audit_service = get_audit_log_service(session, user)
+            audit_service.record_action(
+                event_type="AUTHORIZATION_DENIED",
+                severity="WARNING",
+                message="This operation requires SYSTEM_ADMIN privileges",
+                actor_source="api",
+                actor_user_id=user.id,
+                tenant_id=user.tenant_id,
+                event_metadata={"required_role": "SYSTEM_ADMIN", "actual_role": user.role.value},
+            )
+            session.commit()
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
         raise ForbiddenError("This operation requires SYSTEM_ADMIN privileges")
     return user
 
 
-def _require_tenant_admin_or_above(user: CurrentUser) -> User:  # type: ignore[valid-type]
+def _require_tenant_admin_or_above(user: CurrentUser, session: SessionDependency) -> User:  # type: ignore[valid-type]
     """Dependency: allow SYSTEM_ADMIN or TENANT_ADMIN users.
 
     Used for tenant-scoped management operations such as creating projects
@@ -139,6 +149,23 @@ def _require_tenant_admin_or_above(user: CurrentUser) -> User:  # type: ignore[v
     from app.models.enums import Role
 
     if user.role not in (Role.SYSTEM_ADMIN, Role.TENANT_ADMIN):
+        try:
+            audit_service = get_audit_log_service(session, user)
+            audit_service.record_action(
+                event_type="AUTHORIZATION_DENIED",
+                severity="WARNING",
+                message="This operation requires TENANT_ADMIN privileges or above",
+                actor_source="api",
+                actor_user_id=user.id,
+                tenant_id=user.tenant_id,
+                event_metadata={"required_roles": ["SYSTEM_ADMIN", "TENANT_ADMIN"], "actual_role": user.role.value},
+            )
+            session.commit()
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
         raise ForbiddenError("This operation requires TENANT_ADMIN privileges or above")
     return user
 
@@ -160,7 +187,7 @@ def get_optional_user(
     except (InvalidTokenError, UserNotFoundError, InactiveUserError):
         return None
 
-OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+OptionalUser = Annotated[Optional[User], Depends(get_optional_user)]
 
 
 
@@ -208,6 +235,7 @@ def get_detection_event_service(session: SessionDependency, current_user: Option
         current_user=current_user,
         event_repo=DetectionEventRepository(session),
         token_repo=HoneyTokenRepository(session),
+        audit_service=get_audit_log_service(session, current_user),
     )
 
 
@@ -231,5 +259,6 @@ def get_user_service(session: SessionDependency, current_user: OptionalUser = No
     return UserService(
         session=session,
         current_user=current_user,
-        user_repo=UserRepository(session)
+        user_repo=UserRepository(session),
+        audit_service=get_audit_log_service(session, current_user),
     )

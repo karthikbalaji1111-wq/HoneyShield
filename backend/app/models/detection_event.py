@@ -1,5 +1,7 @@
-from datetime import datetime
-from typing import Any
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -17,10 +19,10 @@ class DetectionEvent(ImmutableBaseModel):
 
     honey_token_id: Mapped[int] = mapped_column(Integer, ForeignKey("honey_tokens.id"), nullable=False, index=True)
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False, index=True)
-    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     request_path: Mapped[str] = mapped_column(Text, nullable=False)
     http_method: Mapped[str] = mapped_column(String(10), nullable=False)
-    headers: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    headers: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     severity: Mapped[EventSeverity] = mapped_column(
         Enum(EventSeverity, native_enum=False, validate_strings=True, length=50),
         nullable=False,
@@ -29,6 +31,7 @@ class DetectionEvent(ImmutableBaseModel):
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
         index=True,
     )

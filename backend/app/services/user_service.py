@@ -1,6 +1,7 @@
 """User service operations."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,9 @@ from app.repositories.user_repository import UserRepository
 from app.services.base import BaseService
 from app.schemas.user import UserCreate, UserUpdate
 
+if TYPE_CHECKING:
+    from app.services.audit_log import AuditLogService
+
 
 class UserService(BaseService):
     """Coordinate user lifecycle and management operations."""
@@ -25,19 +29,38 @@ class UserService(BaseService):
         session: Session,
         user_repo: UserRepository,
         current_user: "User" | None = None,
+        audit_service: "AuditLogService" | None = None,
     ) -> None:
-        """Initialize the service with user repository.
+        """Initialize the service with user repository and audit service.
 
         Args:
             session: The transaction session for user operations.
             user_repo: Repository used to persist and retrieve users.
             current_user: The authenticated user making the request.
+            audit_service: Optional service to record security and admin audit events.
         """
-        super().__init__(session, current_user=current_user)
+        super().__init__(session, current_user=current_user, audit_service=audit_service)
         self.user_repo = user_repo
 
     def _require_manager(self) -> None:
         if self.current_user is None or self.current_user.role not in (Role.SYSTEM_ADMIN, Role.TENANT_ADMIN):
+            if self.current_user and hasattr(self, "audit_service") and self.audit_service:
+                try:
+                    self.audit_service.record_action(
+                        event_type="AUTHORIZATION_DENIED",
+                        severity="WARNING",
+                        message="User management requires administrator privileges",
+                        actor_source="api",
+                        actor_user_id=self.current_user.id,
+                        tenant_id=self.current_user.tenant_id,
+                        event_metadata={"actual_role": self.current_user.role.value},
+                    )
+                    self.session.commit()
+                except Exception:
+                    try:
+                        self.session.rollback()
+                    except Exception:
+                        pass
             raise ForbiddenError("User management requires administrator privileges")
 
     def list_users(self, limit: int | None = None, offset: int = 0) -> list[User]:
@@ -113,6 +136,17 @@ class UserService(BaseService):
                 tenant_id=tenant_id,
             )
             self.session.flush()
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="USER_CREATED",
+                    severity="INFO",
+                    message=f"Created user '{user.email}' with role '{user.role.value}'",
+                    actor_source="api",
+                    target_entity="user",
+                    target_id=str(user.id),
+                    tenant_id=user.tenant_id,
+                    event_metadata={"email": user.email, "role": user.role.value},
+                )
             self.session.commit()
             return user
         except Exception:
@@ -145,6 +179,9 @@ class UserService(BaseService):
             if payload.role == Role.SYSTEM_ADMIN:
                 raise BusinessRuleViolationError("Cannot promote user to SYSTEM_ADMIN")
 
+        old_role = user.role.value
+        old_is_active = user.is_active
+
         if payload.email is not None and payload.email != user.email:
             existing_user = self.user_repo.get_by_email(payload.email)
             if existing_user:
@@ -154,18 +191,51 @@ class UserService(BaseService):
         if payload.password is not None:
             user.hashed_password = get_password_hash(payload.password)
 
-
         user.role = new_role
         user.tenant_id = new_tenant
         if security_change:
             user.token_version = User.token_version + 1
-
 
         if payload.is_active is not None:
             user.is_active = payload.is_active
 
         try:
             self.session.flush()
+            if self.audit_service:
+                if payload.password is not None:
+                    self.audit_service.record_action(
+                        event_type="PASSWORD_CHANGE",
+                        severity="INFO",
+                        message=f"Password updated for user ID {user.id}",
+                        actor_source="api",
+                        target_entity="user",
+                        target_id=str(user.id),
+                        tenant_id=user.tenant_id,
+                        event_metadata={"user_id": user.id},
+                    )
+                if payload.role is not None and user.role.value != old_role:
+                    self.audit_service.record_action(
+                        event_type="ROLE_CHANGED",
+                        severity="WARNING",
+                        message=f"Role changed from '{old_role}' to '{user.role.value}' for user ID {user.id}",
+                        actor_source="api",
+                        target_entity="user",
+                        target_id=str(user.id),
+                        tenant_id=user.tenant_id,
+                        event_metadata={"old_role": old_role, "new_role": user.role.value},
+                    )
+                if payload.is_active is not None and payload.is_active != old_is_active:
+                    ev_type = "USER_ACTIVATED" if payload.is_active else "USER_DEACTIVATED"
+                    self.audit_service.record_action(
+                        event_type=ev_type,
+                        severity="INFO" if payload.is_active else "WARNING",
+                        message=f"User ID {user.id} status changed to {'active' if payload.is_active else 'inactive'}",
+                        actor_source="api",
+                        target_entity="user",
+                        target_id=str(user.id),
+                        tenant_id=user.tenant_id,
+                        event_metadata={"is_active": payload.is_active},
+                    )
             self.session.commit()
             return user
         except Exception:
@@ -183,6 +253,17 @@ class UserService(BaseService):
         
         try:
             self.session.flush()
+            if self.audit_service:
+                self.audit_service.record_action(
+                    event_type="USER_DEACTIVATED",
+                    severity="WARNING",
+                    message=f"Deactivated user ID {user.id}",
+                    actor_source="api",
+                    target_entity="user",
+                    target_id=str(user.id),
+                    tenant_id=user.tenant_id,
+                    event_metadata={"is_active": False},
+                )
             self.session.commit()
             return user
         except Exception:

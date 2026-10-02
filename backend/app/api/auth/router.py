@@ -12,14 +12,20 @@ from app.services.auth_service import AuthService
 from app.core.config import get_settings
 from app.core.rate_limit import login_limiter
 
+from app.api.dependencies import get_audit_log_service
+from app.services.audit_log import AuditLogService
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 SessionDependency = Annotated[Session, Depends(get_db)]
 
 
-def _get_auth_service(session: SessionDependency) -> AuthService:
+def _get_auth_service(
+    session: SessionDependency,
+    audit_service: Annotated[AuditLogService, Depends(get_audit_log_service)],
+) -> AuthService:
     """Provide an AuthService bound to the request-scoped session."""
-    return AuthService(session=session)
+    return AuthService(session=session, audit_service=audit_service)
 
 
 AuthServiceDependency = Annotated[AuthService, Depends(_get_auth_service)]
@@ -53,6 +59,6 @@ def login(body: LoginRequest, auth_service: AuthServiceDependency, request: Requ
     )
     if not allowed:
         raise HTTPException(status_code=429, detail="Login rate limit exceeded", headers={"Retry-After": str(retry_after)})
-    user = auth_service.authenticate(email=body.email, password=body.password)
+    user = auth_service.authenticate(email=body.email, password=body.password, source_ip=source)
     token = auth_service.create_token_for_user(user)
     return TokenResponse(access_token=token)

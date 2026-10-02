@@ -24,6 +24,7 @@ class DetectionEventService(BaseService):
         event_repo: DetectionEventRepository,
         token_repo: HoneyTokenRepository,
         current_user: "User" | None = None,
+        audit_service: "AuditLogService" | None = None,
     ) -> None:
         """Initialize the service with event and token repositories.
 
@@ -31,11 +32,13 @@ class DetectionEventService(BaseService):
             session: The transaction session for event operations.
             event_repo: Repository used to persist and retrieve events.
             token_repo: Repository used to resolve honey tokens.
+            current_user: The authenticated user making the request.
+            audit_service: Optional audit service for security events.
 
         Returns:
             None.
         """
-        super().__init__(session, current_user=current_user)
+        super().__init__(session, current_user=current_user, audit_service=audit_service)
         self.event_repo = event_repo
         self.token_repo = token_repo
 
