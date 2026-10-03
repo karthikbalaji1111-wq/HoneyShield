@@ -1,3 +1,8 @@
+networks:
+  public_net:
+  internal_net:
+    internal: true
+
 services:
   backend:
     build:
@@ -17,6 +22,8 @@ services:
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1.0
+    networks:
+      - internal_net
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +48,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Provide a database password}
     restart: unless-stopped
     mem_limit: 1g
+    networks:
+      - internal_net
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -53,6 +62,8 @@ services:
   redis:
     image: redis:7
     profiles: [optional-redis]
+    networks:
+      - internal_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -64,6 +75,9 @@ services:
     image: nginx:1.28-alpine
     restart: unless-stopped
     mem_limit: 128m
+    networks:
+      - public_net
+      - internal_net
     ports:
       - "127.0.0.1:${NGINX_PORT:-8080}:80"
       - "127.0.0.1:${NGINX_TLS_PORT:-8443}:443"
