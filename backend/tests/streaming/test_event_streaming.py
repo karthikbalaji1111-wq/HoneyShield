@@ -9,6 +9,7 @@ Tests cover:
 6. Event delivery format (no raw headers, correct fields)
 7. Broadcast failure handles gracefully (does not affect persistence)
 """
+from __future__ import annotations
 
 import asyncio
 import json
@@ -31,11 +32,9 @@ from tests.conftest import make_token
 @pytest.fixture(autouse=True)
 def reset_broadcaster():
     broadcaster = get_broadcaster()
-    with broadcaster._lock:
-        broadcaster._subscribers.clear()
-        broadcaster._next_id = 0
-        broadcaster._loop = None
+    broadcaster.reset()
     yield
+    broadcaster.reset()
 
 
 def test_websocket_auth_success(client: TestClient, admin_a: User):
@@ -84,8 +83,13 @@ def test_websocket_auth_missing(client: TestClient):
 @mock.patch("asyncio.wait_for")
 def test_sse_auth_success(mock_wait_for, client: TestClient, admin_a: User):
     """Test SSE connects successfully with query param or header auth."""
-    # Force the SSE generator to exit immediately when it waits for an event
-    mock_wait_for.side_effect = asyncio.CancelledError()
+    # Force the SSE generator to exit immediately when it waits for an event, cleanly closing the coro
+    def _cancel_and_close(coro, timeout=None):
+        if hasattr(coro, "close"):
+            coro.close()
+        raise asyncio.CancelledError()
+
+    mock_wait_for.side_effect = _cancel_and_close
     
     jwt_token = make_token(admin_a)
     
@@ -134,14 +138,16 @@ def test_tenant_isolation(
     
     with client.websocket_connect("/api/v1/events/stream/ws") as ws_a, \
          client.websocket_connect("/api/v1/events/stream/ws") as ws_b:
-        
+
         # Authenticate both
         ws_a.send_json({"type": "auth", "token": jwt_a})
-        assert ws_a.receive_json() == {"type": "auth_success"}
-        
+        res_a = ws_a.receive_json()
+        assert res_a == {"type": "auth_success"}
+
         ws_b.send_json({"type": "auth", "token": jwt_b})
-        assert ws_b.receive_json() == {"type": "auth_success"}
-        
+        res_b = ws_b.receive_json()
+        assert res_b == {"type": "auth_success"}
+
         # Fire event for Tenant A
         service.record_event(
             token_value=token_a.token_value,
@@ -150,7 +156,7 @@ def test_tenant_isolation(
             http_method="GET",
             severity=EventSeverity.HIGH,
         )
-        
+
         # Fire event for Tenant B
         service.record_event(
             token_value=token_b.token_value,
@@ -165,7 +171,7 @@ def test_tenant_isolation(
         assert event_a["ip_address"] == "1.1.1.1"
         assert event_a["honey_token_id"] == token_a.id
         assert "headers" not in event_a  # Enforce minimal payload constraint
-        
+
         # Tenant B should get ONLY the event for token_b (ip 2.2.2.2)
         event_b = ws_b.receive_json()
         assert event_b["ip_address"] == "2.2.2.2"
@@ -276,3 +282,253 @@ def test_disconnect_cleanup(client: TestClient, admin_a: User):
     # However, since TestClient throws WebSocketDisconnect inside the endpoint, the 
     # finally block executes immediately.
     assert broadcaster.subscriber_count == 0
+
+
+def test_websocket_db_pool_zero_checkout(monkeypatch):
+    """F-001: Test that active WebSocket streams do NOT hold checked-out connections in the pool."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import QueuePool
+    from sqlalchemy.orm import sessionmaker
+    from app.models.base import BaseModel
+    from app.models.enums import Role
+    from app.models.tenant import Tenant
+    from app.core.security import get_password_hash
+    from app.db.session import get_db
+    from app.main import app
+
+    qp_engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=QueuePool,
+        pool_size=2,
+        max_overflow=0,
+    )
+    BaseModel.metadata.create_all(bind=qp_engine)
+    TestingSession = sessionmaker(bind=qp_engine, autoflush=True)
+
+    with TestingSession() as seed_session:
+        tenant = Tenant(name="Pool Tenant", slug="pool-tenant", is_active=True)
+        seed_session.add(tenant)
+        seed_session.flush()
+        user = User(
+            email="pool@tenant.com",
+            hashed_password=get_password_hash("password"),
+            role=Role.TENANT_ADMIN,
+            is_active=True,
+            tenant_id=tenant.id,
+        )
+        seed_session.add(user)
+        seed_session.commit()
+        user_token = make_token(user)
+
+    def _override():
+        session = TestingSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, _override)
+
+    with TestClient(app, raise_server_exceptions=False) as tc:
+        # Before connect: pool checkedout == 0
+        assert qp_engine.pool.checkedout() == 0
+
+        with tc.websocket_connect("/api/v1/events/stream/ws") as ws1, \
+             tc.websocket_connect("/api/v1/events/stream/ws") as ws2:
+            ws1.send_json({"type": "auth", "token": user_token})
+            assert ws1.receive_json() == {"type": "auth_success"}
+
+            ws2.send_json({"type": "auth", "token": user_token})
+            assert ws2.receive_json() == {"type": "auth_success"}
+
+            # Both websockets are actively streaming; pool checked-out connections must be 0!
+            assert qp_engine.pool.checkedout() == 0
+
+            # Normal DB operations must continue to succeed without pool starvation
+            with TestingSession() as s:
+                from sqlalchemy import text
+                res = s.execute(text("SELECT 1")).scalar()
+                assert res == 1
+
+            # And after the query completes, checkedout returns to 0 even though both websockets are still streaming!
+            assert qp_engine.pool.checkedout() == 0
+
+            health_res = tc.get("/api/v1/health")
+            assert health_res.status_code == 200
+
+        # After disconnect, checkedout is still 0
+        assert qp_engine.pool.checkedout() == 0
+
+    qp_engine.dispose()
+
+
+def test_websocket_rejection_inactive_user(client: TestClient, admin_a: User, db_session: Session):
+    """Test WebSocket disconnects if user is inactive at connection time."""
+    admin_a.is_active = False
+    db_session.commit()
+    jwt_token = make_token(admin_a)
+
+    with pytest.raises(Exception) as exc_info:
+        with client.websocket_connect("/api/v1/events/stream/ws") as websocket:
+            websocket.send_json({"type": "auth", "token": jwt_token})
+            websocket.receive_json()
+    assert exc_info.type.__name__ == "WebSocketDisconnect"
+    assert exc_info.value.code == 1008
+
+
+def test_websocket_rejection_inactive_tenant(client: TestClient, admin_a: User, tenant_a, db_session: Session):
+    """Test WebSocket disconnects if tenant is inactive at connection time."""
+    tenant_a.is_active = False
+    db_session.commit()
+    jwt_token = make_token(admin_a)
+
+    with pytest.raises(Exception) as exc_info:
+        with client.websocket_connect("/api/v1/events/stream/ws") as websocket:
+            websocket.send_json({"type": "auth", "token": jwt_token})
+            websocket.receive_json()
+    assert exc_info.type.__name__ == "WebSocketDisconnect"
+    assert exc_info.value.code == 1008
+
+
+def test_sse_rejection_inactive_user(client: TestClient, admin_a: User, db_session: Session):
+    """Test SSE rejects inactive user with 401."""
+    admin_a.is_active = False
+    db_session.commit()
+    jwt_token = make_token(admin_a)
+
+    response = client.get(
+        f"/api/v1/events/stream/sse?token={jwt_token}",
+    )
+    assert response.status_code == 401
+
+
+def test_sse_rejection_inactive_tenant(client: TestClient, admin_a: User, tenant_a, db_session: Session):
+    """Test SSE rejects inactive tenant with 401."""
+    tenant_a.is_active = False
+    db_session.commit()
+    jwt_token = make_token(admin_a)
+
+    response = client.get(
+        f"/api/v1/events/stream/sse?token={jwt_token}",
+    )
+    assert response.status_code == 401
+
+
+def test_websocket_mid_connection_user_deactivation(
+    client: TestClient, admin_a: User, db_session: Session, monkeypatch
+):
+    """F-008: Test that mid-connection user deactivation terminates WebSocket with 1008."""
+    import app.api.v1.events_stream as es_mod
+    monkeypatch.setattr(es_mod, "REVALIDATION_INTERVAL_SECONDS", 0.05)
+
+    jwt_token = make_token(admin_a)
+    with pytest.raises(Exception) as exc_info:
+        with client.websocket_connect("/api/v1/events/stream/ws") as websocket:
+            websocket.send_json({"type": "auth", "token": jwt_token})
+            assert websocket.receive_json() == {"type": "auth_success"}
+
+            # Deactivate user in DB
+            admin_a.is_active = False
+            db_session.commit()
+
+            # Revalidation should kick in after 50ms and close connection
+            websocket.receive_text()
+
+    assert exc_info.type.__name__ == "WebSocketDisconnect"
+    assert exc_info.value.code == 1008
+
+
+def test_websocket_mid_connection_token_revocation(
+    client: TestClient, admin_a: User, db_session: Session, monkeypatch
+):
+    """F-008: Test that token version bump (revocation) terminates WebSocket with 1008."""
+    import app.api.v1.events_stream as es_mod
+    monkeypatch.setattr(es_mod, "REVALIDATION_INTERVAL_SECONDS", 0.05)
+
+    jwt_token = make_token(admin_a)
+    with pytest.raises(Exception) as exc_info:
+        with client.websocket_connect("/api/v1/events/stream/ws") as websocket:
+            websocket.send_json({"type": "auth", "token": jwt_token})
+            assert websocket.receive_json() == {"type": "auth_success"}
+
+            # Bump token version in DB (revocation)
+            admin_a.token_version += 1
+            db_session.commit()
+
+            websocket.receive_text()
+
+    assert exc_info.type.__name__ == "WebSocketDisconnect"
+    assert exc_info.value.code == 1008
+
+
+def test_websocket_mid_connection_tenant_deactivation(
+    client: TestClient, admin_a: User, tenant_a, db_session: Session, monkeypatch
+):
+    """F-008: Test that tenant deactivation terminates WebSocket with 1008."""
+    import app.api.v1.events_stream as es_mod
+    monkeypatch.setattr(es_mod, "REVALIDATION_INTERVAL_SECONDS", 0.05)
+
+    jwt_token = make_token(admin_a)
+    with pytest.raises(Exception) as exc_info:
+        with client.websocket_connect("/api/v1/events/stream/ws") as websocket:
+            websocket.send_json({"type": "auth", "token": jwt_token})
+            assert websocket.receive_json() == {"type": "auth_success"}
+
+            # Deactivate tenant in DB
+            tenant_a.is_active = False
+            db_session.commit()
+
+            websocket.receive_text()
+
+    assert exc_info.type.__name__ == "WebSocketDisconnect"
+    assert exc_info.value.code == 1008
+
+
+def test_broadcaster_queue_overflow_drops_oldest(caplog: pytest.LogCaptureFixture):
+    """Test that when a subscriber queue overflows, oldest events are dropped, retaining newest."""
+    import asyncio
+    from app.services.event_broadcaster import _safe_put
+
+    queue: asyncio.Queue = asyncio.Queue(maxsize=3)
+
+    with caplog.at_level(logging.WARNING):
+        _safe_put(queue, {"id": 1}, 10)
+        _safe_put(queue, {"id": 2}, 10)
+        _safe_put(queue, {"id": 3}, 10)
+        assert queue.qsize() == 3
+
+        # Put 4th item, queue was full
+        _safe_put(queue, {"id": 4}, 10)
+        assert queue.qsize() == 3
+
+        # Oldest item (id=1) should have been dropped
+        items = [queue.get_nowait() for _ in range(3)]
+        assert [item["id"] for item in items] == [2, 3, 4]
+        assert "Event queue overflow for subscriber" in caplog.text
+
+
+def test_broadcaster_graceful_shutdown():
+    """F-022: Test that shutdown enqueues shutdown event to subscribers and marks shutting down."""
+    import asyncio
+    from app.services.event_broadcaster import EventBroadcaster
+
+    broadcaster = EventBroadcaster()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=10)
+    sub_id = broadcaster.subscribe(tenant_id=1, queue=queue)
+
+    assert broadcaster.subscriber_count == 1
+    assert not broadcaster.is_shutting_down
+
+    broadcaster.shutdown()
+
+    assert broadcaster.is_shutting_down
+    assert broadcaster.subscriber_count == 0
+
+    # Subscriber queue should have received the shutdown sentinel event
+    shutdown_msg = queue.get_nowait()
+    assert shutdown_msg["type"] == "shutdown"
+
+    # Further publishes after shutdown should be silently ignored
+    broadcaster.publish({"type": "detection_event"}, event_tenant_id=1)
+    assert queue.empty()

@@ -1,4 +1,5 @@
 """Public API schema exports."""
+from __future__ import annotations
 
 from app.schemas.base import SchemaBase
 from app.schemas.detection_event import (

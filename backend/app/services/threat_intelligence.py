@@ -186,20 +186,28 @@ class ThreatIntelligenceService(BaseService):
             )
         return EventTimeline(ip_address=ip_address, events=list(reversed(events)))
 
-    def get_top_attackers(self) -> list[IPProfile]:
-        """Return the ten highest-scoring observed source IP addresses.
+    def get_top_attackers(self, since: datetime | None = None, limit: int = 100) -> list[IPProfile]:
+        """Return the highest-scoring observed source IP addresses.
 
         Returns:
             Up to ten IP profiles ordered by descending score and event count.
         """
+        from datetime import timedelta, timezone
         from app.core.config import get_settings
         from app.db.session import set_query_timeout
+
+        if since is None:
+            since = datetime.now(timezone.utc) - timedelta(days=30)
 
         settings = get_settings()
         with set_query_timeout(self.session, settings.db_analytics_timeout_ms):
             profiles = [
                 self._build_ip_profile(aggregation)
-                for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
+                for aggregation in self.event_repo.aggregate_by_ip(
+                    tenant_id=self._tenant_id,
+                    since=since,
+                    limit=limit,
+                )
             ]
         return sorted(
             profiles,
@@ -210,20 +218,27 @@ class ThreatIntelligenceService(BaseService):
             ),
         )[: self._TOP_ATTACKER_COUNT]
 
-    def get_summary(self) -> ThreatSummary:
+    def get_summary(self, since: datetime | None = None) -> ThreatSummary:
         """Return aggregate threat intelligence across all observed IP addresses.
 
         Returns:
             Total events, distinct source IPs, and the highest calculated score.
         """
+        from datetime import timedelta, timezone
         from app.core.config import get_settings
         from app.db.session import set_query_timeout
+
+        if since is None:
+            since = datetime.now(timezone.utc) - timedelta(days=30)
 
         settings = get_settings()
         with set_query_timeout(self.session, settings.db_analytics_timeout_ms):
             profiles = [
                 self._build_ip_profile(aggregation)
-                for aggregation in self.event_repo.aggregate_by_ip(tenant_id=self._tenant_id)
+                for aggregation in self.event_repo.aggregate_by_ip(
+                    tenant_id=self._tenant_id,
+                    since=since,
+                )
             ]
         return ThreatSummary(
             total_events=sum(profile.total_events for profile in profiles),

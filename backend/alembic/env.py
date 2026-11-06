@@ -17,6 +17,9 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
+    import os
+    if os.getenv("MIGRATION_DATABASE_URL"):
+        return os.environ["MIGRATION_DATABASE_URL"]
     return get_settings().sqlalchemy_database_uri
 
 
@@ -35,6 +38,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
+    # engine_from_config receives the URL directly, bypassing ConfigParser's
+    # interpolation of percent-escaped database credentials.
     configuration["sqlalchemy.url"] = get_database_url()
 
     connectable = engine_from_config(

@@ -291,8 +291,18 @@ class Settings(BaseSettings):
     def validate_production_configuration(self) -> Settings:
         if self.app_env.lower() in ("production", "prod", "staging"):
             if not self.database_url:
-                if not self.postgres_password or self.postgres_password == "honeyshield_dev_password":
-                    raise ValueError("POSTGRES_PASSWORD must be explicitly configured in production")
+                if not self.postgres_password or self.postgres_password in (
+                    "honeyshield_dev_password", "postgres", "password", "admin", "root"
+                ):
+                    raise ValueError("POSTGRES_PASSWORD must be explicitly configured with a secure value in production")
+
+            insecure_key_patterns = (
+                "dev_secret", "test_secret", "change_me", "placeholder",
+                "default_secret", "example_secret", "secret_key_12345"
+            )
+            key_lower = self.jwt_secret_key.lower()
+            if any(pattern in key_lower for pattern in insecure_key_patterns):
+                raise ValueError("JWT_SECRET_KEY must not contain insecure default/placeholder patterns in production")
         return self
 
     @model_validator(mode="after")

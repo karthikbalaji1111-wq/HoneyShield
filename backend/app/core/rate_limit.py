@@ -77,15 +77,20 @@ class FixedWindowLimiter:
             if self._total >= global_limit:
                 return False, retry_after
 
-            current_count = self._counts.get(key, 0)
-            if current_count >= limit:
-                return False, retry_after
+            # Check if key is already tracked
+            if key in self._counts:
+                current_count = self._counts[key]
+                if current_count >= limit:
+                    return False, retry_after
+                self._counts[key] = current_count + 1
+                self._total += 1
+                return True, 0
 
             # Defend against memory exhaustion from high-cardinality attacker keys
-            if key not in self._counts and len(self._counts) >= self._max_keys:
+            if len(self._counts) >= self._max_keys:
                 return False, retry_after
 
-            self._counts[key] = current_count + 1
+            self._counts[key] = 1
             self._total += 1
             return True, 0
 

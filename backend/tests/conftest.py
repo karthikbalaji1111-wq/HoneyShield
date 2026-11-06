@@ -73,17 +73,26 @@ def engine():
 
 @pytest.fixture()
 def db_session(engine):
-    """Per-test transactional session; rolls back after each test."""
+    """Per-test transactional session; rolls back after each test using SAVEPOINTs."""
     connection = engine.connect()
     transaction = connection.begin()
-    TestingSessionLocal = sessionmaker(bind=connection, autoflush=True)
-    session = TestingSessionLocal()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint", autoflush=True)
+
+    nested = connection.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _end_savepoint(session, trans):
+        nonlocal nested
+        if not nested.is_active:
+            nested = connection.begin_nested()
 
     yield session
 
     session.close()
-    transaction.rollback()
+    if transaction.is_active:
+        transaction.rollback()
     connection.close()
+
 
 
 # ---------------------------------------------------------------------------

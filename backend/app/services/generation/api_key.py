@@ -1,4 +1,5 @@
 """Fake API key generator strategy."""
+from __future__ import annotations
 
 import secrets
 import string

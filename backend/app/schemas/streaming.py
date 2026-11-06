@@ -6,8 +6,8 @@ request headers and honey-token secret values to avoid leaking
 attacker-controlled or sensitive data over persistent streaming
 connections.
 """
-
 from __future__ import annotations
+
 
 from datetime import datetime
 

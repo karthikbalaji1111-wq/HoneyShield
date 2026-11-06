@@ -20,8 +20,10 @@ class UserRepository(BaseRepository[User]):
         stmt = select(User).where(User.email == email)
         return self.session.scalar(stmt)
 
-    def get_by_id(self, id: int) -> User | None:
+    def get_by_id(self, id: int, for_update: bool = False) -> User | None:
         """Return the User with the given primary key, or None."""
+        if for_update:
+            return self.session.get(User, id, with_for_update=True)
         return self.session.get(User, id)
 
     def list(self, limit: int | None = None, offset: int = 0) -> list[User]:

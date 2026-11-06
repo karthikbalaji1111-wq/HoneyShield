@@ -69,20 +69,26 @@ class ApiRateLimitMiddleware:
         request_id = headers.get("x-request-id", "-")
 
         # 3. Determine identity and applicable rate limit
+        client_host = scope.get("client", (None, None))[0] if scope.get("client") else None
+        client_ip = self._resolve_ip(client_host, headers, settings)
+
         auth_header = headers.get("authorization", "")
+        rate_key = f"public_ip:{client_ip}"
+        limit = settings.rate_limit_per_minute_public
+
         if auth_header.lower().startswith("bearer "):
-            # Authenticated client: key by hashed token
             token_val = auth_header[7:].strip()
-            token_hash = hashlib.sha256(token_val.encode("utf-8")).hexdigest()[:16]
-            rate_key = f"auth_user:{token_hash}"
-            limit = settings.rate_limit_per_minute_authenticated
-        else:
-            # Unauthenticated client: extract trusted client IP
-            # Build a lightweight request-like object for IP extraction
-            client_host = scope.get("client", (None, None))[0] if scope.get("client") else None
-            client_ip = self._resolve_ip(client_host, headers, settings)
-            rate_key = f"public_ip:{client_ip}"
-            limit = settings.rate_limit_per_minute_public
+            try:
+                from app.core.security import decode_access_token
+                payload = decode_access_token(token_val)
+                user_id = payload.get("sub")
+                rate_key = f"auth_user:{user_id}"
+                limit = settings.rate_limit_per_minute_authenticated
+            except Exception:
+                # Unverified, expired, or malformed tokens cannot obtain elevated quotas.
+                # Fall back strictly to anonymous public IP tracking.
+                rate_key = f"public_ip:{client_ip}"
+                limit = settings.rate_limit_per_minute_public
 
         # 4. Check admission control
         allowed, retry_after = api_limiter.check_and_increment(

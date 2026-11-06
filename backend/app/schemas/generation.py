@@ -1,4 +1,5 @@
 """Schemas for honey token generation."""
+from __future__ import annotations
 
 from typing import Any
 

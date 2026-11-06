@@ -1,0 +1,85 @@
+name: HoneyShield CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Backend Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Validate Alembic Migration Graph
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -c "
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          config = Config('backend/alembic.ini')
+          config.set_main_option('script_location', 'backend/alembic')
+          script = ScriptDirectory.from_config(config)
+          heads = script.get_heads()
+          print(f'Discovered heads: {heads}')
+          assert len(heads) == 1, f'Multiple Alembic heads detected: {heads}'
+          current = heads[0]
+          count = 0
+          while current:
+              count += 1
+              rev = script.get_revision(current)
+              current = rev.down_revision
+          print(f'Alembic chain validated: {count} linear migrations')
+          "
+
+      - name: Run Pytest Suite
+        env:
+          PYTHONPATH: backend
+          APP_ENV: testing
+          JWT_SECRET_KEY: ci-test-secret-key-32-chars-long-minimum!
+        run: |
+          pytest backend/tests -v --strict-markers
+
+  docker-verify:
+    name: Docker Image Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.backend
+          push: false
+          tags: honeyshield-backend:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

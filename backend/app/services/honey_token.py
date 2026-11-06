@@ -78,7 +78,10 @@ class HoneyTokenService(BaseService):
         )
 
         try:
-            project = self.project_repo.get_by_domain(project_domain)
+            tenant_id = None
+            if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+                tenant_id = self.current_user.tenant_id
+            project = self.project_repo.get_by_domain(project_domain, tenant_id=tenant_id)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
             from app.core.auth_exceptions import ForbiddenError
@@ -151,7 +154,10 @@ class HoneyTokenService(BaseService):
             raise ValidationError(f"Unsupported honey token type: '{token_type}'")
 
         try:
-            project = self.project_repo.get_by_domain(project_domain)
+            tenant_id = None
+            if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+                tenant_id = self.current_user.tenant_id
+            project = self.project_repo.get_by_domain(project_domain, tenant_id=tenant_id)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
             from app.core.auth_exceptions import ForbiddenError
@@ -369,7 +375,10 @@ class HoneyTokenService(BaseService):
         project_id = None
         if project_domain is not None:
             self._validate_required_fields(("Project domain", project_domain))
-            project = self.project_repo.get_by_domain(project_domain)
+            tenant_id = None
+            if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+                tenant_id = self.current_user.tenant_id
+            project = self.project_repo.get_by_domain(project_domain, tenant_id=tenant_id)
             if not project:
                 raise ProjectNotFoundError(f"Project '{project_domain}' not found")
             from app.core.auth_exceptions import ForbiddenError

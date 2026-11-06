@@ -65,12 +65,13 @@ class TestAuthenticationRejected:
 
 
 class TestJwtPayloadStructure:
-    def test_jwt_contains_only_sub_and_exp(self, admin_a):
-        """JWT payload must contain only 'sub' and 'exp' — no roles, no tenant_id."""
+    def test_jwt_contains_identity_expiry_and_version_only(self, admin_a):
+        """Version permits revocation; roles and tenant scope remain database-derived."""
         import jwt as pyjwt
         from app.core.config import get_settings
         settings = get_settings()
         token = create_access_token(subject=str(admin_a.id))
         payload = pyjwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        assert set(payload.keys()) == {"sub", "exp"}
+        assert set(payload.keys()) == {"sub", "exp", "ver"}
+        assert payload["ver"] == 0
         assert payload["sub"] == str(admin_a.id)

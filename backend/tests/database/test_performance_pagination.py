@@ -414,3 +414,73 @@ def test_threat_timeline_pagination(
     # Limit validation (max 500)
     resp_invalid = client.get(f"/api/v1/threats/timeline/{target_ip}?limit=501", headers=headers)
     assert resp_invalid.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Test 9: Threat Intelligence Bounded Window & Summary
+# ---------------------------------------------------------------------------
+
+def test_threat_intelligence_bounds_and_summary(
+    client: TestClient,
+    admin_a: User,
+    token_a: HoneyToken,
+    db_session: Session,
+) -> None:
+    """Verify that get_top_attackers and get_summary filter out events older than 30 days."""
+    headers = auth_headers(admin_a)
+    now = datetime.now(timezone.utc)
+
+    # 1. Recent event (within 30 days)
+    recent_event = DetectionEvent(
+        honey_token_id=token_a.id,
+        ip_address="198.51.100.88",
+        request_path="/t/token-a-secret-value",
+        http_method="GET",
+        severity=EventSeverity.HIGH,
+        triggered_at=now - timedelta(days=5),
+    )
+    # 2. Ancient event (older than 30 days: 45 days ago)
+    old_event = DetectionEvent(
+        honey_token_id=token_a.id,
+        ip_address="198.51.100.77",
+        request_path="/t/token-a-secret-value",
+        http_method="GET",
+        severity=EventSeverity.CRITICAL,
+        triggered_at=now - timedelta(days=45),
+    )
+    db_session.add_all([recent_event, old_event])
+    db_session.flush()
+
+    # Query top-attackers
+    resp_top = client.get("/api/v1/threats/top-attackers", headers=headers)
+    assert resp_top.status_code == 200
+    top_ips = [a["ip_address"] for a in resp_top.json()]
+    assert "198.51.100.88" in top_ips
+    assert "198.51.100.77" not in top_ips
+
+    # Query summary (default 30 days)
+    resp_sum = client.get("/api/v1/threats/summary", headers=headers)
+    assert resp_sum.status_code == 200
+    summary = resp_sum.json()
+    assert summary["distinct_ip_addresses"] >= 1
+    assert summary["total_events"] >= 1
+
+    # Query with custom days window (60 days: includes the 45-day-old event)
+    resp_top_60 = client.get("/api/v1/threats/top-attackers?days=60", headers=headers)
+    assert resp_top_60.status_code == 200
+    top_ips_60 = [a["ip_address"] for a in resp_top_60.json()]
+    assert "198.51.100.88" in top_ips_60
+    assert "198.51.100.77" in top_ips_60
+
+    # Query with narrow days window (2 days: excludes both 5-day and 45-day events)
+    resp_top_2 = client.get("/api/v1/threats/top-attackers?days=2", headers=headers)
+    assert resp_top_2.status_code == 200
+    top_ips_2 = [a["ip_address"] for a in resp_top_2.json()]
+    assert "198.51.100.88" not in top_ips_2
+    assert "198.51.100.77" not in top_ips_2
+
+    # Query validation boundaries (days > 365 -> 422, limit > 500 -> 422)
+    resp_inv_days = client.get("/api/v1/threats/summary?days=366", headers=headers)
+    assert resp_inv_days.status_code == 422
+    resp_inv_limit = client.get("/api/v1/threats/top-attackers?limit=501", headers=headers)
+    assert resp_inv_limit.status_code == 422

@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,8 +20,8 @@ class HoneyToken(BaseModel):
         index=True,
     )
     token_value: Mapped[str] = mapped_column(String(512), nullable=False, unique=True)
-    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    token_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
+    label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    token_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column("metadata", JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
 
     project: Mapped["Project"] = relationship(
@@ -29,5 +31,5 @@ class HoneyToken(BaseModel):
     detection_events: Mapped[list["DetectionEvent"]] = relationship(
         "DetectionEvent",
         back_populates="honey_token",
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

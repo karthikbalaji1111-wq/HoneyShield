@@ -125,11 +125,15 @@ def get_event_timeline(
     response_model=ThreatSummaryResponse,
     status_code=status.HTTP_200_OK,
     summary="Get threat intelligence summary",
-    description="Returns aggregate intelligence derived from all detection events.",
+    description="Returns aggregate intelligence derived from detection events.",
     responses={
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponse,
             "description": "Authentication required.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": ErrorResponse,
+            "description": "Validation error on query parameters.",
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponse,
@@ -143,9 +147,19 @@ def get_threat_summary(
         Depends(get_threat_intelligence_service),
     ],
     _: CurrentUser,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=365,
+            description="Time window in days for aggregate intelligence (defaults to 30 days).",
+        ),
+    ] = 30,
 ) -> ThreatSummaryResponse:
     """Retrieve and serialize aggregate threat intelligence. Requires authentication."""
-    return service.get_summary()
+    from datetime import datetime, timedelta, timezone
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    return service.get_summary(since=since)
 
 
 @router.get(
@@ -153,11 +167,15 @@ def get_threat_summary(
     response_model=list[IPProfileResponse],
     status_code=status.HTTP_200_OK,
     summary="List top attackers",
-    description="Returns the ten highest-scoring source IP threat profiles.",
+    description="Returns the highest-scoring source IP threat profiles.",
     responses={
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorResponse,
             "description": "Authentication required.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "model": ErrorResponse,
+            "description": "Validation error on query parameters.",
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "model": ErrorResponse,
@@ -171,6 +189,24 @@ def get_top_attackers(
         Depends(get_threat_intelligence_service),
     ],
     _: CurrentUser,
+    days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=365,
+            description="Time window in days for top attacker scoring (defaults to 30 days).",
+        ),
+    ] = 30,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=500,
+            description="Maximum number of candidate IP aggregations to evaluate.",
+        ),
+    ] = 100,
 ) -> list[IPProfileResponse]:
-    """Retrieve and serialize the ten highest-scoring attackers. Requires authentication."""
-    return service.get_top_attackers()
+    """Retrieve and serialize the highest-scoring attackers. Requires authentication."""
+    from datetime import datetime, timedelta, timezone
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    return service.get_top_attackers(since=since, limit=limit)

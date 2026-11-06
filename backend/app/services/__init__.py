@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.services.base import BaseService
 from app.services.detection_event import DetectionEventService
 from app.services.honey_token import HoneyTokenService

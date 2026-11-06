@@ -133,11 +133,16 @@ class DetectionEventRepository(BaseRepository[DetectionEvent]):
         self,
         ip_address: str | None = None,
         tenant_id: int | None = None,
+        since: datetime | None = None,
+        limit: int | None = None,
     ) -> list[IPActivityAggregation]:
         """Aggregate detection-event activity by source IP address.
 
         Args:
             ip_address: Optional source IP address used to scope the aggregation.
+            tenant_id: Optional tenant identifier used to scope the aggregation.
+            since: Optional cutoff timestamp to bound query window.
+            limit: Optional maximum number of IP aggregates to return.
 
         Returns:
             One aggregate result per matching source IP address.
@@ -169,9 +174,14 @@ class DetectionEventRepository(BaseRepository[DetectionEvent]):
         )
         if tenant_id is not None:
             stmt = stmt.join(Project, HoneyToken.project_id == Project.id).where(Project.tenant_id == tenant_id)
-        stmt = stmt.group_by(DetectionEvent.ip_address).order_by(DetectionEvent.ip_address)
+        if since is not None:
+            stmt = stmt.where(DetectionEvent.triggered_at >= since)
         if ip_address is not None:
             stmt = stmt.where(DetectionEvent.ip_address == ip_address)
+
+        stmt = stmt.group_by(DetectionEvent.ip_address).order_by(DetectionEvent.ip_address)
+        if limit is not None:
+            stmt = stmt.limit(limit)
 
         rows = self.session.execute(stmt)
         return [

@@ -143,6 +143,7 @@ class TestApiRateLimiting:
 
     def test_auth_login_endpoint_rate_limited(self, client):
         """POST /auth/login must be rate limited by login_limiter."""
+        reset_all_limiters()
         settings = get_settings()
         with patch.object(settings, "login_attempts_per_minute", 2):
             for _ in range(2):
@@ -167,6 +168,55 @@ class TestApiRateLimiting:
 
             r3 = client.get("/api/v1/projects", headers=admin_headers_a)
             assert r3.status_code == 200
+
+    def test_unverified_bearer_token_receives_anonymous_rate_limit(self, client):
+        """Unverified/bogus Bearer tokens must receive public limit, not elevated authenticated limit."""
+        settings = get_settings()
+        with patch.object(settings, "rate_limit_per_minute_public", 2):
+            headers = {"Authorization": "Bearer forged.invalid.token"}
+            r1 = client.get("/api/v1/projects", headers=headers)
+            assert r1.status_code == 401
+            r2 = client.get("/api/v1/projects", headers=headers)
+            assert r2.status_code == 401
+
+            # Request 3 is throttled at public limit (2), returning 429
+            r3 = client.get("/api/v1/projects", headers=headers)
+            assert r3.status_code == 429
+
+    def test_random_bearer_tokens_cannot_flood_key_table(self, client):
+        """Random bearer tokens from the same IP must all map to public_ip, not separate keys."""
+        from app.core.rate_limit import api_limiter
+        initial_keys = len(api_limiter._counts)
+
+        for i in range(10):
+            client.get("/api/v1/projects", headers={"Authorization": f"Bearer fake_token_{i}"})
+
+        # At most 1 new key should have been created (public_ip:127.0.0.1)
+        assert len(api_limiter._counts) <= initial_keys + 1
+
+    def test_limiter_saturation_bounds_memory_and_preserves_existing(self):
+        """FixedWindowLimiter must strictly bound memory under high-cardinality keys without evicting existing clients."""
+        from app.core.rate_limit import FixedWindowLimiter
+        limiter = FixedWindowLimiter(max_keys=10, clock=lambda: 1000.0)
+
+        # Register an existing key
+        allowed, _ = limiter.check_and_increment("client:existing", limit=5, global_limit=100)
+        assert allowed is True
+
+        # Saturate with 10 distinct attacker keys (filling remaining 9 slots up to max_keys=10)
+        for i in range(10):
+            limiter.check_and_increment(f"attacker:{i}", limit=5, global_limit=100)
+
+        # Existing key still has remaining allowance and is preserved (not evicted)
+        allowed_existing, _ = limiter.check_and_increment("client:existing", limit=5, global_limit=100)
+        assert allowed_existing is True
+
+        # New arrival beyond max_keys is rejected to defend memory
+        allowed_new, _ = limiter.check_and_increment("new:arrival", limit=5, global_limit=100)
+        assert allowed_new is False
+
+        # Table size is strictly bounded to max_keys
+        assert len(limiter._counts) <= 10
 
 
 # ---------------------------------------------------------------------------

@@ -11,10 +11,12 @@ class ProjectRepository(BaseRepository[Project]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, Project)
 
-    def get_by_domain(self, domain: str) -> Project | None:
+    def get_by_domain(self, domain: str, tenant_id: int | None = None) -> Project | None:
         stmt = select(Project).where(
             Project.domain == domain,
         )
+        if tenant_id is not None:
+            stmt = stmt.where(Project.tenant_id == tenant_id)
         return self.session.scalar(stmt)
 
     def list_by_tenant(self, tenant_id: int, limit: int | None = None, offset: int = 0) -> list[Project]:

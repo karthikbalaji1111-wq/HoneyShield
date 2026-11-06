@@ -120,7 +120,10 @@ class ProjectService(BaseService):
             ProjectNotFoundError: If no matching project exists.
         """
         self._validate_required_fields(("Domain", domain))
-        project = self.project_repo.get_by_domain(domain)
+        tenant_id = None
+        if self.current_user and self.current_user.role.name != "SYSTEM_ADMIN":
+            tenant_id = self.current_user.tenant_id
+        project = self.project_repo.get_by_domain(domain, tenant_id=tenant_id)
         if not project:
             raise ProjectNotFoundError(f"Project for domain '{domain}' not found")
         from app.core.auth_exceptions import ForbiddenError

@@ -1,4 +1,5 @@
 """Hidden URL generator strategy."""
+from __future__ import annotations
 
 import secrets
 from typing import Any
@@ -11,31 +12,30 @@ class HiddenUrlGenerator(BaseGenerator):
     """Generates realistic hidden administration and configuration paths."""
 
     def generate(self, project_domain: str, params: dict[str, Any]) -> GeneratedTokenData:
-        paths = [
-            "/admin/login",
-            "/.git/config",
-            "/private/api",
-            "/internal/dashboard",
-            "/config",
-            "/wp-admin/admin-ajax.php",
-            "/.env",
-            "/api/v1/internal/users",
+        slug_prefixes = [
+            "admin-portal",
+            "internal-console",
+            "backup-archive",
+            "debug-metrics",
+            "private-api",
+            "config-dump",
+            "auth-session",
+            "db-export",
         ]
         
-        selected_path = secrets.choice(paths)
-        
-        # Add random token or query parameters to make it unique per generation
+        prefix = secrets.choice(slug_prefixes)
         random_suffix = secrets.token_hex(8)
-        
-        # Decide if we append a query param or unique suffix based on path type
-        if ".git" in selected_path or ".env" in selected_path:
-            # For strict files, we might prepend a unique directory
-            token_value = f"/backup-{random_suffix}{selected_path}"
-        else:
-            token_value = f"{selected_path}?auth_token={random_suffix}"
+        token_value = f"{prefix}-{random_suffix}"
+        path = f"/t/{token_value}"
+        url = f"https://{project_domain}{path}" if project_domain else path
 
         return GeneratedTokenData(
             token_value=token_value,
-            label=f"Hidden Path: {selected_path}",
-            metadata={"base_path": selected_path, "domain_context": project_domain},
+            label=f"Hidden URL: {prefix}",
+            metadata={
+                "path": path,
+                "url": url,
+                "decoy_category": prefix.split("-")[0],
+                "domain_context": project_domain,
+            },
         )

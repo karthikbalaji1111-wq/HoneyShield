@@ -1,4 +1,5 @@
 """Authentication exceptions."""
+from __future__ import annotations
 
 from app.core.exceptions import HoneyShieldException
 

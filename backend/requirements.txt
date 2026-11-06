@@ -22,5 +22,6 @@ tomli==2.4.1
 typing-inspection==0.4.2
 typing_extensions==4.16.0
 uvicorn==0.39.0
+websockets==15.0.1
 bcrypt==4.1.2
-PyJWT==2.8.0
+PyJWT==2.14.0

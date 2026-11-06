@@ -312,11 +312,17 @@ class TestDeduplicationAndHeaderIntegrity:
 class TestEndpointSpecificHeaderPreservation:
     """Verify endpoint-specific headers (e.g. Cache-Control on SSE) are preserved."""
 
-    @patch("asyncio.wait_for", side_effect=asyncio.CancelledError)
+    @patch("asyncio.wait_for")
     def test_sse_endpoint_preserves_custom_cache_control(
         self, mock_wait_for, client: TestClient, admin_a: User
     ):
         """SSE stream response specifies Cache-Control: no-cache, which must NOT be replaced with no-store."""
+        def _cancel_and_close(coro, timeout=None):
+            if hasattr(coro, "close"):
+                coro.close()
+            raise asyncio.CancelledError()
+
+        mock_wait_for.side_effect = _cancel_and_close
         from app.core.security import create_access_token
         token = create_access_token(subject=str(admin_a.id))
 

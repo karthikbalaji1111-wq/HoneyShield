@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 
 from app.models.enums import Role
@@ -124,3 +126,22 @@ class TestUserManagement:
         # 2. Authenticate
         resp2 = client.get("/api/v1/users", headers=auth_headers(user_a))
         assert resp2.status_code == 401
+
+    def test_admin_cannot_self_deactivate(self, client, admin_a):
+        resp = client.post(f"/api/v1/users/{admin_a.id}/deactivate", headers=auth_headers(admin_a))
+        assert resp.status_code == 409
+        assert "Cannot deactivate your own account" in resp.json()["detail"]
+
+    def test_admin_cannot_self_deactivate_via_patch(self, client, admin_a):
+        resp = client.patch(f"/api/v1/users/{admin_a.id}", json={"is_active": False}, headers=auth_headers(admin_a))
+        assert resp.status_code == 409
+        assert "Cannot deactivate your own account" in resp.json()["detail"]
+
+    def test_token_version_increments_as_int_on_update(self, client, admin_a, user_a, db_session):
+        initial_version = user_a.token_version
+        resp = client.patch(f"/api/v1/users/{user_a.id}", json={"password": "NewSecretPassword123!"}, headers=auth_headers(admin_a))
+        assert resp.status_code == 200
+        db_session.expire_all()
+        updated_user = db_session.get(User, user_a.id)
+        assert isinstance(updated_user.token_version, int)
+        assert updated_user.token_version == initial_version + 1

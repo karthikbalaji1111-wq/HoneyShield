@@ -75,13 +75,13 @@ class UserService(BaseService):
         
         return self.user_repo.list_by_tenant(self.current_user.tenant_id, limit=limit, offset=offset)
 
-    def get_user(self, user_id: int) -> User:
+    def get_user(self, user_id: int, for_update: bool = False) -> User:
         """Get a user by ID, respecting tenant isolation.
         
         Returns 404 for nonexistent OR cross-tenant to prevent enumeration.
         """
         self._require_manager()
-        user = self.user_repo.get_by_id(user_id)
+        user = self.user_repo.get_by_id(user_id, for_update=for_update)
         if not user:
             raise UserNotFoundError("User not found")
         if self.current_user.role != Role.SYSTEM_ADMIN and user.role == Role.SYSTEM_ADMIN:
@@ -158,7 +158,7 @@ class UserService(BaseService):
 
     def update_user(self, user_id: int, payload: UserUpdate) -> User:
         """Update an existing user."""
-        user = self.get_user(user_id)
+        user = self.get_user(user_id, for_update=True)
         new_role = payload.role if payload.role is not None else user.role
         tenant_supplied = "tenant_id" in payload.model_fields_set
         new_tenant = payload.tenant_id if tenant_supplied else user.tenant_id
@@ -180,7 +180,8 @@ class UserService(BaseService):
                 raise BusinessRuleViolationError("Cannot promote user to SYSTEM_ADMIN")
 
         old_role = user.role.value
-        old_is_active = user.is_active
+        if payload.is_active is False and self.current_user and user.id == self.current_user.id:
+            raise BusinessRuleViolationError("Cannot deactivate your own account")
 
         if payload.email is not None and payload.email != user.email:
             existing_user = self.user_repo.get_by_email(payload.email)
@@ -194,7 +195,7 @@ class UserService(BaseService):
         user.role = new_role
         user.tenant_id = new_tenant
         if security_change:
-            user.token_version = User.token_version + 1
+            user.token_version = (user.token_version or 0) + 1
 
         if payload.is_active is not None:
             user.is_active = payload.is_active
@@ -247,9 +248,11 @@ class UserService(BaseService):
 
     def deactivate_user(self, user_id: int) -> User:
         """Deactivate a user account."""
-        user = self.get_user(user_id)
+        user = self.get_user(user_id, for_update=True)
+        if self.current_user and user.id == self.current_user.id:
+            raise BusinessRuleViolationError("Cannot deactivate your own account")
         user.is_active = False
-        user.token_version = User.token_version + 1
+        user.token_version = (user.token_version or 0) + 1
         
         try:
             self.session.flush()

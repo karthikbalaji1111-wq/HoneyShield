@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.models.application_config import ApplicationConfig
 from app.models.audit_log import AuditLog
 from app.models.base import BaseModel, ImmutableBaseModel
